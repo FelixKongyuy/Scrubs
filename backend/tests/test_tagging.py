@@ -1,5 +1,5 @@
 """
-Pseudonyms (real value -> [PATIENT_01]), pseudonymizing, and restoring Gemini's answer.
+Pseudonyms (real value -> [PERSON_01]), pseudonymizing, and restoring Gemini's answer.
 Run from the backend folder:   python -m tests.test_tagging
 """
 from datetime import date
@@ -24,15 +24,15 @@ def flags_for(text, items, masked=True):
 
 def test_format_is_prefix_and_two_digits():
     p = tagging.Pseudonyms()
-    assert [p.get("PATIENT", n) for n in ["Jane Doe", "Bob Ray"]] == ["[PATIENT_01]", "[PATIENT_02]"]
+    assert [p.get("PERSON", n) for n in ["Jane Doe", "Bob Ray"]] == ["[PERSON_01]", "[PERSON_02]"]
     assert p.get("HCN", "9123 947 241") == "[HCN_01]"           # numbering is per prefix
 
 
 def test_same_value_same_pseudonym_after_normalizing():
     p = tagging.Pseudonyms()
-    a = p.get("PATIENT", "Mrs. Eleanor Park")
-    assert p.get("PATIENT", "eleanor  park") == a
-    assert p.get("PATIENT", " ELEANOR PARK ") == a
+    a = p.get("PERSON", "Mrs. Eleanor Park")
+    assert p.get("PERSON", "eleanor  park") == a
+    assert p.get("PERSON", " ELEANOR PARK ") == a
     assert p.get("PROVIDER", "Dr. Amrit Singh") == p.get("PROVIDER", "Amrit Singh")
 
 
@@ -58,14 +58,14 @@ def test_hundred_plus_pseudonyms_still_unique():
 
 def test_masked_replaced_unmasked_kept():
     text = "Jane Doe takes apixaban."
-    flags = flags_for(text, [("Jane Doe", "PATIENT"), ("apixaban", "DRUG")])
+    flags = flags_for(text, [("Jane Doe", "PERSON"), ("apixaban", "DRUG")])
     flags[1]["masked"] = False
-    assert tagging.pseudonymize(text, flags) == "[PATIENT_01] takes apixaban."
+    assert tagging.pseudonymize(text, flags) == "[PERSON_01] takes apixaban."
 
 
 def test_nothing_masked_changes_nothing():
     text = "Jane Doe takes apixaban."
-    assert tagging.pseudonymize(text, flags_for(text, [("Jane Doe", "PATIENT")], masked=False)) == text
+    assert tagging.pseudonymize(text, flags_for(text, [("Jane Doe", "PERSON")], masked=False)) == text
 
 
 def test_repeats_any_case_are_replaced():
@@ -96,22 +96,22 @@ def test_repeat_inside_an_unmasked_flag_is_still_replaced():
 
 def test_unicode_names():
     text = "Zoë Côté-Nguyen, seen by Dr. Siobhán Ó Briain."
-    flags = flags_for(text, [("Zoë Côté-Nguyen", "PATIENT"), ("Siobhán Ó Briain", "PROVIDER")])
+    flags = flags_for(text, [("Zoë Côté-Nguyen", "PERSON"), ("Siobhán Ó Briain", "PROVIDER")])
     out = tagging.pseudonymize(text, flags)
-    assert out == "[PATIENT_01], seen by Dr. [PROVIDER_01]."
+    assert out == "[PERSON_01], seen by Dr. [PROVIDER_01]."
     assert tagging.restore(out, tagging.mapping_of(flags)) == text
 
 
 def test_mapping_has_masked_flags_only():
     text = "Jane Doe takes apixaban."
-    flags = flags_for(text, [("Jane Doe", "PATIENT"), ("apixaban", "DRUG")])
+    flags = flags_for(text, [("Jane Doe", "PERSON"), ("apixaban", "DRUG")])
     flags[1]["masked"] = False
-    assert tagging.mapping_of(flags) == {"[PATIENT_01]": "Jane Doe"}
+    assert tagging.mapping_of(flags) == {"[PERSON_01]": "Jane Doe"}
 
 
 def test_no_masked_value_survives_on_sample_note():
     text = open("sample_note.txt").read()
-    items = [("Margaret Ellison", "PATIENT"), ("9123 947 241", "HCN"), ("03/14/1951", "DATE"),
+    items = [("Margaret Ellison", "PERSON"), ("9123 947 241", "HCN"), ("03/14/1951", "DATE"),
              ("211 Campbell St", "ADDRESS"), ("Tofino", "LOC"), ("V0R 2Z0", "ADDRESS"),
              ("(250) 555-0142", "PHONE"), ("Claire", "FAMILY"), ("claire.ellison@example.com", "EMAIL"),
              ("Raj Patel", "PROVIDER")]
@@ -126,37 +126,37 @@ def test_no_masked_value_survives_on_sample_note():
 # ---------- restoring ----------
 
 def test_restore_handles_altered_pseudonyms():
-    m = {"[PATIENT_01]": "Jane Doe"}
-    for variant in ["[PATIENT_01]", "PATIENT_01", "[Patient 01]", "[ PATIENT_01 ]", "patient_01",
-                    "[PATIENT_1]", "PATIENT_1", "[Patient 1]"]:
+    m = {"[PERSON_01]": "Jane Doe"}
+    for variant in ["[PERSON_01]", "PERSON_01", "[Person 01]", "[ PERSON_01 ]", "person_01",
+                    "[PERSON_1]", "PERSON_1", "[Person 1]"]:
         assert tagging.restore(f"Dear {variant}, thanks.", m) == "Dear Jane Doe, thanks.", variant
 
 
 def test_restore_leaves_unknown_and_invented_pseudonyms():
-    m = {"[PATIENT_01]": "Jane Doe"}
-    assert tagging.restore("[PATIENT_03] and [HCN_09]", m) == "[PATIENT_03] and [HCN_09]"
+    m = {"[PERSON_01]": "Jane Doe"}
+    assert tagging.restore("[PERSON_03] and [HCN_09]", m) == "[PERSON_03] and [HCN_09]"
 
 
 def test_restore_leaves_ordinary_text_alone():
-    m = {"[PATIENT_01]": "Jane Doe", "[DATE_02]": "2026-09-02"}
+    m = {"[PERSON_01]": "Jane Doe", "[DATE_02]": "2026-09-02"}
     text = "Type 2 diabetes, COVID 19 vaccine, Day 5, step 1, ICD 10, Apixaban 5 mg."
     assert tagging.restore(text, m) == text
 
 
 def test_restore_does_not_confuse_1_and_10():
-    m = {f"[PATIENT_{i:02d}]": f"Name{i}" for i in range(1, 12)}
-    assert tagging.restore("[PATIENT_10] [PATIENT_01] [PATIENT_11]", m) == "Name10 Name1 Name11"
+    m = {f"[PERSON_{i:02d}]": f"Name{i}" for i in range(1, 12)}
+    assert tagging.restore("[PERSON_10] [PERSON_01] [PERSON_11]", m) == "Name10 Name1 Name11"
 
 
 def test_restore_never_crashes_on_junk():
-    m = {"[PATIENT_01]": "Jane Doe"}
-    for junk in ["", "[", "]", "[[PATIENT_01]]", "[PATIENT_]", "[_1]", "\x00", "[PATIENT_99999999999999999999]"]:
+    m = {"[PERSON_01]": "Jane Doe"}
+    for junk in ["", "[", "]", "[[PERSON_01]]", "[PERSON_]", "[_1]", "\x00", "[PERSON_99999999999999999999]"]:
         tagging.restore(junk, m)
 
 
 def test_restore_swaps_shifted_dates_back():
-    m = {"[PATIENT_01]": "Jane Doe", "Aug 13": "Sept 28", "2026-08-13": "2026-09-28"}
-    out = tagging.restore("[PATIENT_01] admitted Aug 13 (2026-08-13). Aug 135 is not a date.", m)
+    m = {"[PERSON_01]": "Jane Doe", "Aug 13": "Sept 28", "2026-08-13": "2026-09-28"}
+    out = tagging.restore("[PERSON_01] admitted Aug 13 (2026-08-13). Aug 135 is not a date.", m)
     assert out == "Jane Doe admitted Sept 28 (2026-09-28). Aug 135 is not a date."
 
 
@@ -204,8 +204,8 @@ def typed(value, kind, pseudonym, masked=True):
 
 
 def test_question_names_are_tagged_any_case():
-    flags = [typed("Jane Doe", "PERSON", "[PATIENT_01]"), typed("Jane", "PERSON", "[PATIENT_02]")]
-    assert tagging.tag_question("How is JANE DOE doing?", flags) == "How is [PATIENT_01] doing?"
+    flags = [typed("Jane Doe", "PERSON", "[PERSON_01]"), typed("Jane", "PERSON", "[PERSON_02]")]
+    assert tagging.tag_question("How is JANE DOE doing?", flags) == "How is [PERSON_01] doing?"
 
 
 def test_question_tagging_is_whole_words_only():
@@ -222,14 +222,14 @@ def test_question_unmasked_values_stay():
 
 # ---------- name and number variants (QA: these reached Gemini unchanged) ----------
 
-OKAFOR = [typed("Daniel Okafor", "PERSON", "[PATIENT_01]"), typed("Dr. Priya Sandhu", "PROVIDER", "[PROVIDER_01]"),
+OKAFOR = [typed("Daniel Okafor", "PERSON", "[PERSON_01]"), typed("Dr. Priya Sandhu", "PROVIDER", "[PROVIDER_01]"),
           typed("(604) 555-0187", "PHONE", "[PHONE_01]"), typed("9487 312 652", "PHN", "[HCN_01]")]
 
 
 def test_question_variants_are_tagged():
     cases = {
-        "Summarize Mr. Okafor's case": "Summarize Mr. [PATIENT_01]'s case",
-        "Patient okafor, daniel - summarize": "Patient [PATIENT_01], [PATIENT_01] - summarize",
+        "Summarize Mr. Okafor's case": "Summarize Mr. [PERSON_01]'s case",
+        "Patient okafor, daniel - summarize": "Patient [PERSON_01], [PERSON_01] - summarize",
         "Was Dr. Sandhu involved?": "Was Dr. [PROVIDER_01] involved?",
         "Call 604-555-0187": "Call [PHONE_01]",
         "Call 6045550187 or (604) 555-0187": "Call [PHONE_01] or [PHONE_01]",
@@ -253,18 +253,18 @@ def test_note_repeats_of_name_parts_and_number_layouts_are_replaced():
     out = tagging.pseudonymize(text, flags)
     for secret in ["okafor", "daniel", "sandhu", "priya", "555", "0187"]:
         assert secret not in out.lower(), (secret, out)
-    assert "Mr. [PATIENT_01]'s wife" in out
+    assert "Mr. [PERSON_01]'s wife" in out
 
 
 def test_full_value_wins_over_another_names_word():
     # "Claire Park" is flagged only in its second mention; the first is found as a repeat and
-    # must become [PATIENT_02], not "Claire [PATIENT_01]" from the word "Park" of "Eleanor Park".
+    # must become [PERSON_02], not "Claire [PERSON_01]" from the word "Park" of "Eleanor Park".
     text = "Eleanor Park lives with Claire Park. Later Claire Park and Park visit."
     s = text.rindex("Claire Park")
-    flags = [{**typed("Eleanor Park", "PERSON", "[PATIENT_01]"), "start_idx": 0, "end_idx": 12},
-             {**typed("Claire Park", "PERSON", "[PATIENT_02]"), "start_idx": s, "end_idx": s + 11}]
+    flags = [{**typed("Eleanor Park", "PERSON", "[PERSON_01]"), "start_idx": 0, "end_idx": 12},
+             {**typed("Claire Park", "PERSON", "[PERSON_02]"), "start_idx": s, "end_idx": s + 11}]
     out = tagging.pseudonymize(text, flags)
-    assert out == "[PATIENT_01] lives with [PATIENT_02]. Later [PATIENT_02] and [PATIENT_01] visit.", out
+    assert out == "[PERSON_01] lives with [PERSON_02]. Later [PERSON_02] and [PERSON_01] visit.", out
 
 
 def test_name_words_skip_titles_particles_and_eponyms():

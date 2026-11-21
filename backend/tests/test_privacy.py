@@ -200,7 +200,7 @@ def test_patients_own_identifiers_in_the_message_are_pseudonymized():
     gemini_client._client = fake
     r = full_flow(c, message="Referral for MARGARET ELLISON, PHN 9123 947 241, from Tofino")
     assert r.status_code == 200 and r.json["identifier_count"] == 0, r.json
-    assert "[PATIENT_" in r.json["outbound_text"] and "[HCN_" in r.json["outbound_text"]
+    assert "[PERSON_" in r.json["outbound_text"] and "[HCN_" in r.json["outbound_text"]
     for s in ["Margaret", "Ellison", "9123", "Tofino"]:
         assert s.lower() not in fake.requests[0].lower(), s
 

@@ -62,17 +62,17 @@ def test_pipeline():
 def test_restore(flags):
     mapping = tagging.mapping_of(flags)
     patient = next(t for t, v in mapping.items() if v == "Margaret Ellison")
-    assert patient == "[PATIENT_01]"
-    answer = "[PATIENT_01] should rest. PATIENT_01 and [Patient 1] are fine. [PATIENT_99] unknown."
+    assert patient == "[PERSON_01]"
+    answer = "[PERSON_01] should rest. PERSON_01 and [Person 1] are fine. [PERSON_99] unknown."
     restored = tagging.restore(answer, mapping)
-    assert restored.count("Margaret Ellison") == 3 and "[PATIENT_99]" in restored
-    assert tagging.tag_question("How is margaret ellison?", flags) == "How is [PATIENT_01]?"
+    assert restored.count("Margaret Ellison") == 3 and "[PERSON_99]" in restored
+    assert tagging.tag_question("How is margaret ellison?", flags) == "How is [PERSON_01]?"
 
 
 def test_flask():
     import app as app_module
     import gemini_client
-    gemini_client.ask = lambda note, history, q: "Fake answer about [PATIENT_01]"   # no real API call
+    gemini_client.ask = lambda note, history, q: "Fake answer about [PERSON_01]"   # no real API call
     config.GEMINI_API_KEY = "test-key"
     c = app_module.app.test_client()
 

@@ -23,7 +23,8 @@ DOC_KEYS = {"id", "title", "source", "original_text", "pseudonymized_text", "sta
 FLAG_KEYS = {"flag_code", "start_idx", "end_idx", "text", "label", "tier", "reason", "masked", "locked",
              "pseudonym", "source"}
 CHAT_KEYS = {"answer_with_pseudonyms", "outbound_text", "identifier_count"}
-LABELS = {"Person", "PHN", "MRN", "License", "Address", "Phone", "Email", "Date", "Age", "Location description",
+LABELS = {"Person", "PHN", "MRN", "License", "Address", "Phone", "Email", "SIN", "Card number", "Bank account",
+          "Date", "Age", "Location description",
           "Unique role", "Family detail", "Employer", "Person description", "Drug", "Dose", "Diagnosis", "Lab value"}
 
 sent_to_gemini: list[tuple[str, str]] = []
@@ -31,7 +32,7 @@ sent_to_gemini: list[tuple[str, str]] = []
 
 def fake_ask(note, history, question):
     sent_to_gemini.append((note, question))
-    return "Referral for [PATIENT_01] (PATIENT_1) seen by [PROVIDER_01]. [PATIENT_07] is unknown."
+    return "Referral for [PERSON_01] (PERSON_1) seen by [PROVIDER_01]. [PERSON_07] is unknown."
 
 
 def client():
@@ -94,7 +95,7 @@ def test_paste_returns_a_doc():
 def test_default_tiers_and_locks():
     c = client()
     doc = new_doc(c)
-    assert flag(doc, "Margaret Ellison")["tier"] == "high" and flag(doc, "Margaret Ellison")["pseudonym"] == "[PATIENT_01]"
+    assert flag(doc, "Margaret Ellison")["tier"] == "high" and flag(doc, "Margaret Ellison")["pseudonym"] == "[PERSON_01]"
     assert flag(doc, "Dr. Raj Patel")["pseudonym"].startswith("[PROVIDER_")
     assert flag(doc, "9123 947 241")["label"] == "PHN" and flag(doc, "9123 947 241")["pseudonym"].startswith("[HCN_")
     assert flag(doc, "bush pilot")["tier"] == "med" and not flag(doc, "bush pilot")["locked"]
@@ -374,7 +375,7 @@ def test_chat_returns_chat_response():
     assert r.status_code == 200, r.json
     assert set(r.json) == CHAT_KEYS
     assert r.json["identifier_count"] == 0
-    assert r.json["answer_with_pseudonyms"].startswith("Referral for [PATIENT_01]")
+    assert r.json["answer_with_pseudonyms"].startswith("Referral for [PERSON_01]")
     assert r.json["outbound_text"].startswith("Document 1:\n") and "Request: Draft a referral" in r.json["outbound_text"]
     note, question = sent_to_gemini[-1]
     assert note in r.json["outbound_text"] and question in r.json["outbound_text"]
@@ -409,7 +410,7 @@ def test_leak_check_never_trips_on_its_own_hiding_step():
                 "label": label, "pseudonym": pseudonym}
 
     flags = [flag("2", "Date", "[DATE_01]"), flag("3", "Date", "[DATE_02]"),
-             flag("Margaret Ellison", "Person", "[PATIENT_01]")]
+             flag("Margaret Ellison", "Person", "[PERSON_01]")]
     from pipeline import tagging
     out = tagging.pseudonymize(text, flags)
     assert app_module.leak_check(out, flags) == (0, "")
@@ -524,7 +525,7 @@ class FlakyGenai:
             err = Exception("gemini error")
             err.code = self.codes.pop(0)
             raise err
-        return type("R", (), {"text": "Recovered answer for [PATIENT_01]."})()
+        return type("R", (), {"text": "Recovered answer for [PERSON_01]."})()
 
 
 def test_gemini_busy_errors_retry_then_fall_back():
@@ -609,7 +610,7 @@ def test_settings_never_return_the_key():
     try:
         config.GEMINI_API_KEY = KEY
         r = c.get("/settings").json
-        assert r == {"gemini_key_set": True, "gemini_key_hint": "abcd", "key_storage": "memory"}
+        assert r == {"gemini_key_set": True, "gemini_key_hint": "abcd", "key_storage": "memory", "never_mask": []}
         assert KEY not in str(r)
         config.GEMINI_API_KEY = ""
         assert c.get("/settings").json["gemini_key_set"] is False
@@ -701,6 +702,79 @@ def test_cors_preflight_allows_settings_changes():
     r = c.open("/settings/gemini-key", method="OPTIONS", headers={
         "Origin": "https://evil.example", "Access-Control-Request-Method": "PUT"})
     assert "Access-Control-Allow-Origin" not in r.headers
+
+
+# ---------- never-mask list and general documents ----------
+
+def never_mask_client():
+    c, store = settings_client()
+    app_module.save_never_mask = store
+    return c, store
+
+
+def restore_never_mask():
+    app_module.save_never_mask = app_module._keep_in_memory_only
+    config.NEVER_MASK = []
+    restore_settings()
+
+
+def test_acronyms_are_not_names():
+    c = client()
+    doc = new_doc(c, text="Course list: VHDL, FPGA, MATLAB and SQL. Ask the CRA about RRSP and OAS.")
+    assert doc["flags"] == [], [f["text"] for f in doc["flags"]]
+
+
+def test_sin_card_and_bank_numbers_are_locked_high():
+    c = client()
+    doc = new_doc(c, text="SIN: 130 000 003. Card 4111 1111 1111 1111. IBAN GB82 WEST 1234 5698 7654 32.")
+    found = {f["text"]: f for f in doc["flags"]}
+    assert found["130 000 003"]["label"] == "SIN" and found["130 000 003"]["pseudonym"] == "[SIN_01]"
+    assert found["4111 1111 1111 1111"]["label"] == "Card number"
+    assert found["GB82 WEST 1234 5698 7654 32"]["label"] == "Bank account"
+    assert all(f["tier"] == "high" and f["locked"] for f in found.values())
+    # A plain reference number is not a SIN.
+    assert new_doc(c, text="Order reference 130000003 has shipped.")["flags"] == []
+
+
+def test_never_mask_list_saves_and_updates_open_documents():
+    c, store = never_mask_client()
+    try:
+        doc = ready_doc(c)
+        assert any(f["text"] == "Margaret Ellison" for f in doc["flags"])
+        r = c.put("/settings/never-mask", json={"words": ["  margaret   ellison ", "Margaret Ellison", ""]})
+        assert r.status_code == 200, r.json
+        assert r.json["never_mask"] == ["margaret ellison"] and r.json["documents_updated"] >= 1
+        assert store.saved == [["margaret ellison"]]
+        again = c.get(f"/documents/{doc['id']}").json
+        assert all(f["text"] != "Margaret Ellison" for f in again["flags"])
+        assert again["status"] == "needs_review" and again["pseudonymized_text"] is None   # review again
+        assert c.get("/settings").json["never_mask"] == ["margaret ellison"]
+        # New scans skip it too, so it is sent as written.
+        fresh = new_doc(c)
+        assert all(f["text"] != "Margaret Ellison" for f in fresh["flags"])
+    finally:
+        restore_never_mask()
+
+
+def test_never_mask_is_a_whole_match_only():
+    c, _ = never_mask_client()
+    try:
+        c.put("/settings/never-mask", json={"words": ["Margaret"]})
+        doc = new_doc(c)
+        assert any(f["text"] == "Margaret Ellison" for f in doc["flags"])    # still masked
+    finally:
+        restore_never_mask()
+
+
+def test_bad_never_mask_requests():
+    c, store = never_mask_client()
+    try:
+        for body in (None, {}, {"words": "VHDL"}, {"words": [1, 2]}, {"words": ["x" * 101]},
+                     {"words": [f"w{i}" for i in range(301)]}):
+            assert c.put("/settings/never-mask", json=body).status_code == 400, body
+        assert store.saved == [] and config.NEVER_MASK == []
+    finally:
+        restore_never_mask()
 
 
 # ---------- misc ----------

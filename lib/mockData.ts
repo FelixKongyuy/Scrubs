@@ -9,7 +9,7 @@ type Spec = {
   tier: Tier;
   reason: string;
   source: Flag["source"];
-  prefix?: string; // pseudonym prefix, e.g. "PATIENT"
+  prefix?: string; // pseudonym prefix, e.g. "PERSON"
   shifted?: string; // for dates: the shifted value instead of a pseudonym
 };
 
@@ -22,7 +22,7 @@ const s = (
   replace: { prefix: string } | { shifted: string },
 ): Spec => ({ text, label, tier, reason, source, ...replace });
 
-const KEPT = "Clinical term, kept by default";
+const KEPT = "Medical term, kept by default";
 
 // CLAUDE.md section 12: the demo note and its expected flags.
 export const DEMO_TITLE = "Sample note, Sept 28";
@@ -30,7 +30,7 @@ export const DEMO_NOTE =
   "Mrs. Eleanor Park, 72, MRN 4482913, was admitted on Sept 28 after a fall at her home, the small red house beside the Hope community hall. She is the retired town pharmacist, and her daughter, a nurse at Fraser Canyon Hospital, visits daily. History of atrial fibrillation. Weight 112 kg. Started on apixaban 5 mg BID. Follow up with Dr. Amrit Singh in 2 weeks.";
 
 const DEMO_SPECS: Spec[] = [
-  s("Mrs. Eleanor Park", "Person", "high", "Patient name", "presidio", { prefix: "PATIENT" }),
+  s("Mrs. Eleanor Park", "Person", "high", "Person's name", "presidio", { prefix: "PERSON" }),
   s("4482913", "MRN", "high", "Medical record number", "presidio", { prefix: "MRN" }),
   s("Sept 28", "Date", "med", "Exact date", "presidio", { shifted: "Aug 13" }),
   s("the small red house beside the Hope community hall", "Location description", "med",
@@ -67,7 +67,7 @@ Last creatinine: 118 µmol/L
 Follow-up with family physician in 2 weeks.`;
 
 const DISCHARGE_SPECS: Spec[] = [
-  s("Margaret Chen", "Person", "high", "Patient name", "presidio", { prefix: "PATIENT" }),
+  s("Margaret Chen", "Person", "high", "Person's name", "presidio", { prefix: "PERSON" }),
   s("9876 543 210", "BC PHN", "high", "BC health card number", "presidio", { prefix: "HCN" }),
   s("VGH-0048213", "MRN", "high", "Medical record number", "presidio", { prefix: "MRN" }),
   s("1934-02-17", "Date", "med", "Date of birth", "presidio", { shifted: "1933-12-03" }),
@@ -110,7 +110,7 @@ Last HbA1c: 7.9%
 Notes: Works night shifts at Surrey Memorial Hospital; missed evening Metformin doses. Contact at jsingh82@example.com.`;
 
 const MEDREC_SPECS: Spec[] = [
-  s("J. Singh", "Person", "high", "Patient name", "presidio", { prefix: "PATIENT" }),
+  s("J. Singh", "Person", "high", "Person's name", "presidio", { prefix: "PERSON" }),
   s("9123 456 789", "BC PHN", "high", "BC health card number", "presidio", { prefix: "HCN" }),
   s("2026-05-02", "Date", "med", "Exact date", "presidio", { shifted: "2026-02-14" }),
   s("Emma Tremblay", "Person", "high", "Provider name", "presidio", { prefix: "PROVIDER" }),
@@ -145,7 +145,7 @@ const pseudonymFor = (spec: Spec) => {
   return p;
 };
 
-// Number the demo note first so it gets [PATIENT_01], [LOC_01], ... as in section 12.
+// Number the demo note first so it gets [PERSON_01], [LOC_01], ... as in section 12.
 [...DEMO_SPECS, ...DISCHARGE_SPECS, ...MEDREC_SPECS].forEach(pseudonymFor);
 
 const isWordChar =(c: string | undefined) => !!c && /[\p{L}\p{N}]/u.test(c);

@@ -11,6 +11,7 @@ This file doesn't change the backend. It imports backend/app.py as-is, points it
 bundled files, and adds two routes that serve the static frontend.
 """
 
+import json
 import os
 import socket
 import sys
@@ -71,6 +72,26 @@ def save_key_to_credential_manager(key: str) -> None:
         pass                                          # nothing was saved
 
 
+# Preferences only (the never-mask list). No document text, flags or mappings are ever written here.
+SETTINGS_FILE = Path(os.getenv("LOCALAPPDATA") or Path.home()) / "Scrubs" / "settings.json"
+
+
+def load_never_mask() -> list[str]:
+    try:
+        words = json.loads(SETTINGS_FILE.read_text(encoding="utf-8")).get("never_mask", [])
+        return [w for w in words if isinstance(w, str)]
+    except Exception:
+        return []                                     # no file yet, or unreadable: start empty
+
+
+def save_never_mask(words: list[str]) -> None:
+    """Called by the backend's Settings endpoint with the full list."""
+    SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = SETTINGS_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"never_mask": words}, indent=2), encoding="utf-8")
+    tmp.replace(SETTINGS_FILE)                         # never leaves a half-written file
+
+
 def free_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
@@ -105,6 +126,8 @@ def build_app():
         backend.KEY_STORAGE = "credential_manager"
     except Exception:
         pass                                           # Settings still works, for this session only
+    backend.config.NEVER_MASK = load_never_mask()
+    backend.save_never_mask = save_never_mask
     flask_app = backend.app
 
     # The API routes (/documents, /chat, ...) are more specific, so Flask matches them first.

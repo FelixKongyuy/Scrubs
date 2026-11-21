@@ -23,10 +23,12 @@ SPACY_MODEL = os.getenv("SPACY_MODEL", "en_core_web_sm")
 # Presidio entity types we ask for. We deliberately leave out LOCATION and NRP
 # (nationality/religion/politics) because they're noisy on clinical text; GLiNER handles places.
 PRESIDIO_ENTITIES = ["PERSON", "PHONE_NUMBER", "EMAIL_ADDRESS", "DATE_TIME",
-                     "PHN", "POSTAL", "FACILITY", "MRN", "ADDRESS", "LICENSE"]
+                     "PHN", "POSTAL", "FACILITY", "MRN", "ADDRESS", "LICENSE",
+                     "SIN", "CREDIT_CARD", "IBAN_CODE"]
 
 # Rename Presidio's type names to our shorter tag names.
-PRESIDIO_RENAME = {"PHONE_NUMBER": "PHONE", "EMAIL_ADDRESS": "EMAIL", "DATE_TIME": "DATE"}
+PRESIDIO_RENAME = {"PHONE_NUMBER": "PHONE", "EMAIL_ADDRESS": "EMAIL", "DATE_TIME": "DATE",
+                   "CREDIT_CARD": "CARD", "IBAN_CODE": "IBAN"}
 
 # Known BC facility names (public info, not patient data). Extend this list.
 BC_FACILITIES = [
@@ -73,7 +75,8 @@ GLINER_CHUNK_CHARS = 1200
 # ---------- Merge ----------
 # Types found by a pattern/checksum (not a guess). When findings overlap, these types win.
 # Presidio's PERSON is NOT here: it's a spaCy model guess, so GLiNER (the specialist) wins on names.
-STRUCTURED_TYPES = {"PHN", "MRN", "LICENSE", "PHONE", "EMAIL", "POSTAL", "DATE", "FACILITY", "ADDRESS"}
+STRUCTURED_TYPES = {"PHN", "MRN", "LICENSE", "PHONE", "EMAIL", "POSTAL", "DATE", "FACILITY", "ADDRESS",
+                    "SIN", "CARD", "IBAN"}
 
 # Words that look like names but are medical terms. Never redact these.
 NEVER_REDACT = {
@@ -84,11 +87,31 @@ NEVER_REDACT = {
     "pt", "bc", "dob", "hx", "patient", "clinic",
 }
 
+# Acronyms spaCy's small model guesses are names ("Skills: VHDL, FPGA" -> PERSON). None of them
+# identify anyone, so they're never flagged. Lowercase. Users add their own in Settings (NEVER_MASK).
+COMMON_ACRONYMS = {
+    # school, work and tech
+    "vhdl", "verilog", "fpga", "asic", "cpu", "gpu", "usb", "html", "css", "sql", "pdf", "api", "ui",
+    "ux", "it", "hr", "ceo", "cfo", "cto", "vp", "phd", "msc", "bsc", "basc", "ba", "mba", "gpa",
+    "matlab", "linux", "wifi", "faq", "diy", "eta", "asap",
+    # money, benefits and government (Canada)
+    "sin", "cra", "rrsp", "rrif", "tfsa", "resp", "oas", "gis", "cpp", "ei", "gst", "hst", "pst",
+    "atm", "pin", "iban", "icbc", "msp", "poa", "rbc", "bmo", "cibc", "td",
+    # medical
+    "mri", "ct", "ecg", "ekg", "eeg", "icu", "er", "ed", "gp", "md", "rn", "lpn", "np", "ot",
+    "copd", "chf", "uti", "bp", "hba1c", "inr", "iv", "dnr", "cpr", "adl", "adls",
+}
+NEVER_REDACT |= COMMON_ACRONYMS
+
+# Words and phrases the user told Scrubs never to mask (Settings > Never mask). Matched as a
+# whole flag, ignoring case. Filled at startup by the desktop app; empty when run from source.
+NEVER_MASK: list[str] = []
+
 # ---------- Tiers, labels, pseudonyms (CLAUDE.md sections 6 and 8) ----------
 # Internal type -> (label the frontend shows, tier, pseudonym prefix).
 # HIGH = always masked and locked. MED = masked, can unmask. LOW = kept, can mask.
 TYPES = {
-    "PERSON":     ("Person", "high", "PATIENT"),
+    "PERSON":     ("Person", "high", "PERSON"),
     "PROVIDER":   ("Person", "high", "PROVIDER"),
     "PHN":        ("PHN", "high", "HCN"),
     "MRN":        ("MRN", "high", "MRN"),
@@ -97,6 +120,9 @@ TYPES = {
     "POSTAL":     ("Address", "high", "ADDRESS"),
     "PHONE":      ("Phone", "high", "PHONE"),
     "EMAIL":      ("Email", "high", "EMAIL"),
+    "SIN":        ("SIN", "high", "SIN"),
+    "CARD":       ("Card number", "high", "CARD"),
+    "IBAN":       ("Bank account", "high", "ACCOUNT"),
     "DATE":       ("Date", "med", "DATE"),
     "AGE":        ("Age", "med", "AGE"),
     "LOCATION":   ("Location description", "med", "LOC"),

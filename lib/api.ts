@@ -186,6 +186,11 @@ const real = {
   async removeGeminiKey(): Promise<Settings> {
     return normalizeSettings(await request<any>("/settings/gemini-key", { method: "DELETE" }));
   },
+
+  // PUT /settings/never-mask. Sends the whole list; open documents are updated right away.
+  async saveNeverMask(words: string[]): Promise<Settings> {
+    return normalizeSettings(await request<any>("/settings/never-mask", json("PUT", { words })));
+  },
 };
 
 function normalizeSettings(s: any): Settings {
@@ -193,7 +198,9 @@ function normalizeSettings(s: any): Settings {
     gemini_key_set: s?.gemini_key_set === true,
     gemini_key_hint: typeof s?.gemini_key_hint === "string" ? s.gemini_key_hint : null,
     key_storage: s?.key_storage === "credential_manager" ? "credential_manager" : "memory",
+    never_mask: Array.isArray(s?.never_mask) ? s.never_mask.filter((w: unknown) => typeof w === "string") : [],
     verified: typeof s?.verified === "boolean" ? s.verified : undefined,
+    documents_updated: typeof s?.documents_updated === "number" ? s.documents_updated : undefined,
   };
 }
 
@@ -209,6 +216,7 @@ export const chat = (documentIds: string[], message: string) => impl.chat(docume
 export const getSettings = () => impl.getSettings();
 export const saveGeminiKey = (key: string) => impl.saveGeminiKey(key);
 export const removeGeminiKey = () => impl.removeGeminiKey();
+export const saveNeverMask = (words: string[]) => impl.saveNeverMask(words);
 
 // Where people get a key. Opened in the system browser by the desktop app.
 export const GEMINI_KEY_URL = "https://aistudio.google.com/apikey";

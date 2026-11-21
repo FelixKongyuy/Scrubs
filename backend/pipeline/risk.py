@@ -2,8 +2,8 @@
 Tiers, labels and reasons (CLAUDE.md section 6). Plain rules, no AI, so every decision is explainable.
 
 - HIGH (names, PHN, MRN, address, phone, email): masked and locked.
-- MED (dates, towns, roles, family details...): masked, the clinician can unmask.
-- LOW (drugs, doses, diagnoses, lab values): kept, the clinician can mask.
+- MED (dates, towns, roles, family details...): masked, the user can unmask.
+- LOW (drugs, doses, diagnoses, lab values): kept, the user can mask.
 - Quasi-identifiers are harmless alone, but 3+ different kinds in one note ("74" + "Tofino" +
   "retired pilot") can point to one person, so their reason says so.
 """
@@ -15,7 +15,7 @@ import config
 SOURCE = {"rules": "presidio", "gliner": "model", "lexicon": "lexicon"}
 
 REASONS = {
-    "PERSON": "Patient or other person's name",
+    "PERSON": "Person's name",
     "PROVIDER": "Provider name",
     "PHN": "BC PHN, check digit valid",
     "MRN": "Medical record number",
@@ -24,6 +24,9 @@ REASONS = {
     "POSTAL": "Canadian postal code",
     "PHONE": "Phone number",
     "EMAIL": "Email address",
+    "SIN": "Social Insurance Number, check digit valid",
+    "CARD": "Payment card number, check digit valid",
+    "IBAN": "Bank account number (IBAN)",
     "DATE": "Exact date",
     "AGE": "Age over 89",
     "LOCATION": "Names a town or place",
@@ -32,10 +35,10 @@ REASONS = {
     "RELATION": "Family member or detail",
     "ORG": "Names an employer",
     "DESC": "Describes the person",
-    "DRUG": "Clinical term, kept by default",
-    "DOSE": "Clinical term, kept by default",
-    "DIAGNOSIS": "Clinical term, kept by default",
-    "LAB": "Clinical term, kept by default",
+    "DRUG": "Medical term, kept by default",
+    "DOSE": "Medical term, kept by default",
+    "DIAGNOSIS": "Medical term, kept by default",
+    "LAB": "Medical term, kept by default",
 }
 
 # Plain words for the "N details combined" reason.

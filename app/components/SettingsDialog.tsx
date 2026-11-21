@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { removeGeminiKey } from "../../lib/api";
+import { removeGeminiKey, saveNeverMask } from "../../lib/api";
 import { errorText } from "../../lib/errors";
 import type { Settings } from "../../lib/types";
 import ApiKeyForm from "./ApiKeyForm";
@@ -9,8 +9,109 @@ import ApiKeyForm from "./ApiKeyForm";
 type Props = {
   settings: Settings | null;
   onChange: (settings: Settings) => void;
+  // Called after the never-mask list changes, so open documents are reloaded.
+  onDocumentsChanged: () => void;
   onClose: () => void;
 };
+
+const updatedText = (n: number | undefined) =>
+  n ? ` ${n} open document${n === 1 ? " was" : "s were"} updated: review ${n === 1 ? "it" : "them"} again before chatting.` : "";
+
+// Words Scrubs flagged by mistake (course names, acronyms, product names). They are never masked,
+// in any tier, so they reach the chatbot as written.
+function NeverMaskList({
+  words,
+  onSaved,
+}: {
+  words: string[];
+  onSaved: (settings: Settings, message: string) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const save = async (next: string[], message: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const s = await saveNeverMask(next);
+      onSaved(s, message + updatedText(s.documents_updated));
+      return true;
+    } catch (err) {
+      setError(errorText(err, "The list couldn't be saved."));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const add = async () => {
+    const w = draft.trim();
+    if (!w || busy) return;
+    if (words.some((x) => x.toLowerCase() === w.toLowerCase())) {
+      setDraft("");
+      return;
+    }
+    if (await save([...words, w], `"${w}" will no longer be masked.`)) setDraft("");
+  };
+
+  return (
+    <>
+      <h3 className="side-h">Never mask</h3>
+      <p className="muted">
+        Words Scrubs flagged by mistake, like a course name or an abbreviation. They are never masked, even HIGH
+        items, and are sent to the chatbot as written. Only add things that don&apos;t identify you.
+      </p>
+      <form
+        className="never-mask__add"
+        onSubmit={(e) => {
+          e.preventDefault();
+          add();
+        }}
+      >
+        <label className="sr-only" htmlFor="never-mask-input">
+          Word or phrase to never mask
+        </label>
+        <input
+          id="never-mask-input"
+          className="input"
+          value={draft}
+          maxLength={100}
+          placeholder="For example: VHDL"
+          onChange={(e) => setDraft(e.target.value)}
+        />
+        <button type="submit" className="btn" disabled={!draft.trim() || busy}>
+          Add
+        </button>
+      </form>
+      {words.length === 0 ? (
+        <p className="muted never-mask__empty">Nothing on the list yet.</p>
+      ) : (
+        <ul className="never-mask__list">
+          {words.map((w) => (
+            <li key={w}>
+              <span>{w}</span>
+              <button
+                type="button"
+                className="link-btn"
+                disabled={busy}
+                aria-label={`Remove ${w}`}
+                onClick={() => save(words.filter((x) => x !== w), `"${w}" will be flagged again in new scans.`)}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {error && (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      )}
+    </>
+  );
+}
 
 const STORAGE_TEXT: Record<Settings["key_storage"], string> = {
   credential_manager: "Saved in Windows Credential Manager on this computer.",
@@ -18,7 +119,7 @@ const STORAGE_TEXT: Record<Settings["key_storage"], string> = {
   demo: "Demo mode: the chatbot is simulated, so no key is needed.",
 };
 
-export default function SettingsDialog({ settings, onChange, onClose }: Props) {
+export default function SettingsDialog({ settings, onChange, onDocumentsChanged, onClose }: Props) {
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
@@ -101,6 +202,16 @@ export default function SettingsDialog({ settings, onChange, onClose }: Props) {
                 </button>
               </div>
             )}
+
+            <NeverMaskList
+              words={settings.never_mask}
+              onSaved={(s, message) => {
+                onChange(s);
+                onDocumentsChanged();
+                setError(null);
+                setNote(message);
+              }}
+            />
           </>
         )}
 

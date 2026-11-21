@@ -42,7 +42,8 @@ export async function getDocument(id: string): Promise<Doc> {
 // POST /documents
 export async function createDocument(input: NewDocument): Promise<Doc> {
   if (input.kind === "pdf") throw new Error("PDF upload needs the backend. In this demo, paste the note text instead.");
-  const doc = makeDoc(`doc-${Date.now()}`, input.title.trim() || "Pasted note", "paste", input.text, new Date(), detect(input.text));
+  const flags = detect(input.text).filter((f) => !isNeverMask(f.text));
+  const doc = makeDoc(`doc-${Date.now()}`, input.title.trim() || "Pasted note", "paste", input.text, new Date(), flags);
   store = [doc, ...db()];
   return copy(doc);
 }
@@ -104,7 +105,27 @@ export async function chat(documentIds: string[], message: string): Promise<Chat
 }
 
 // The demo's chatbot is canned, so it starts with a key "set" and never needs a real one.
-let demoSettings: Settings = { gemini_key_set: true, gemini_key_hint: null, key_storage: "demo" };
+let demoSettings: Settings = { gemini_key_set: true, gemini_key_hint: null, key_storage: "demo", never_mask: [] };
+
+const normalizePhrase = (w: string) => w.replace(/\s+/g, " ").trim().replace(/^[.,;:!?"'()[\]]+|[.,;:!?"'()[\]]+$/g, "").toLowerCase();
+const isNeverMask = (text: string) => demoSettings.never_mask.some((w) => normalizePhrase(w) === normalizePhrase(text));
+
+// PUT /settings/never-mask. Same rules as the backend: dedupe, then drop matching flags from open documents.
+export async function saveNeverMask(words: string[]): Promise<Settings> {
+  const seen = new Set<string>();
+  const clean = words
+    .map((w) => w.replace(/\s+/g, " ").trim())
+    .filter((w) => w && !seen.has(normalizePhrase(w)) && seen.add(normalizePhrase(w)));
+  demoSettings = { ...demoSettings, never_mask: clean };
+  let changed = 0;
+  store = db().map((d) => {
+    const kept = d.flags.filter((f) => !isNeverMask(f.text));
+    if (kept.length === d.flags.length) return d;
+    changed++;
+    return { ...d, flags: kept, status: "needs_review", pseudonymized_text: null };
+  });
+  return { ...demoSettings, documents_updated: changed };
+}
 
 // GET /settings
 export async function getSettings(): Promise<Settings> {

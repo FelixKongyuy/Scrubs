@@ -33,7 +33,7 @@ type Props = {
   onOpenSettings: () => void;
 };
 
-// The clinician's message exactly as the backend sent it: the part of the outbound text after the
+// The user's message exactly as the backend sent it: the part of the outbound text after the
 // last "Request: " line. Null when there is no outbound text (e.g. blocked before it was built).
 const REQUEST_MARK = "\n\nRequest: ";
 const requestPart = (outbound: string) => {
@@ -124,7 +124,7 @@ function AiSaw({ text, mapping, markdown }: { text: string; mapping: Record<stri
   return markdown ? <Markdown text={text} chunk={chunk} /> : <>{chunk(text)}</>;
 }
 
-// Copies the re-identified text, for pasting into the chart or a letter template.
+// Copies the re-identified text, for pasting into a letter, an email or a form.
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
@@ -184,7 +184,7 @@ export default function ChatStep({
     try {
       mapping = Object.assign({}, ...(await Promise.all(ids.map(getMapping))));
     } catch (err) {
-      // Nothing was sent. Give the text back so the clinician can retry.
+      // Nothing was sent. Give the text back so the user can retry.
       setDraft(text);
       setMessages((m) => [...m, { role: "error", text: errorText(err) }]);
       setThinking(false);

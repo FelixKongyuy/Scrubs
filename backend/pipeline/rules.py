@@ -52,6 +52,42 @@ class BCPHNRecognizer(PatternRecognizer):
         return is_valid_phn(pattern_text)
 
 
+# ---------- Canadian Social Insurance Number ----------
+def luhn_ok(digits: str) -> bool:
+    """The Luhn check digit used by SINs and payment cards."""
+    total = 0
+    for i, ch in enumerate(reversed(digits)):
+        n = int(ch)
+        if i % 2:
+            n = n * 2 - 9 if n > 4 else n * 2
+        total += n
+    return total % 10 == 0
+
+
+class SINRecognizer(EntityRecognizer):
+    """
+    9 digits that pass the Luhn check, written 123 456 782 / 123-456-782, or with no gaps right
+    after "SIN" or "social insurance". A bare 9-digit number alone is too often something else.
+    SINs never start with 0 or 8.
+    """
+    _RE = re.compile(r"(?<![\d-])([1-79]\d{2})([ -]?)(\d{3})\2(\d{3})(?![\d-])")
+    _CUE = re.compile(r"\b(sin|s\.i\.n\.|social insurance)\b[^\n]{0,25}$", re.IGNORECASE)
+
+    def __init__(self):
+        super().__init__(supported_entities=["SIN"], name="SINRecognizer")
+
+    def load(self): pass
+
+    def analyze(self, text, entities, nlp_artifacts=None):
+        out = []
+        for m in self._RE.finditer(text):
+            digits = m.group(1) + m.group(3) + m.group(4)
+            spaced = bool(m.group(2))
+            if luhn_ok(digits) and (spaced or self._CUE.search(text[max(0, m.start() - 40):m.start()])):
+                out.append(RecognizerResult("SIN", m.start(), m.end(), 1.0))   # beats a phone guess
+        return out
+
+
 # ---------- MRN (Medical Record Number) ----------
 class MRNRecognizer(EntityRecognizer):
     """Flags the digit portion of MRN annotations, e.g. '9482-110' in 'MRN: 9482-110'."""
@@ -164,6 +200,7 @@ analyzer.registry.add_recognizer(ContextDateRecognizer())
 analyzer.registry.add_recognizer(RunningTextDateRecognizer())
 analyzer.registry.add_recognizer(StreetAddressRecognizer())
 analyzer.registry.add_recognizer(LicenseRecognizer())
+analyzer.registry.add_recognizer(SINRecognizer())     # CREDIT_CARD and IBAN_CODE are Presidio built-ins
 
 # Canadian postal code, e.g. "V0R 2Z0". (First letter can't be D, F, I, O, Q, U, W, Z.)
 analyzer.registry.add_recognizer(PatternRecognizer(

@@ -40,32 +40,38 @@ export default function HowItWorks() {
               Close
             </button>
           </div>
+          <p className="muted">
+            Scrubs works with any private document: medical records, letters, bills, bank or tax forms. It hides
+            the details that point to you before anything is sent to the chatbot.
+          </p>
           <ol className="steps-list">
-            <li>Presidio flags names, numbers, and dates.</li>
-            <li>Our model and a list of BC places and roles flag indirect details Presidio misses, like &ldquo;the retired town pharmacist&rdquo;.</li>
-            <li>Drug names, doses, and diagnoses are kept by default.</li>
-            <li>You review every flagged item. Gemini only receives the pseudonymized text.</li>
+            <li>Scrubs finds names, ID numbers (health card, SIN, bank and card numbers), addresses, phone numbers and dates.</li>
+            <li>It also looks for clues that could point to you indirectly, like a small town or &ldquo;the retired town pharmacist&rdquo;.</li>
+            <li>You check every flagged item and decide what to hide.</li>
+            <li>Hidden items are swapped for labels like [PERSON_01]. Only that version goes to the chatbot, and the real words are put back on your screen.</li>
           </ol>
-          <h2 className="side-h">Tiers</h2>
+          <h2 className="side-h">How items are sorted</h2>
           <dl className="tier-legend">
             <dt>
               <TierTag tier="high" />
             </dt>
-            <dd>Always masked. Names, health card numbers, MRNs, addresses, phone numbers.</dd>
+            <dd>Always hidden. Names, ID numbers, addresses, phone numbers, emails.</dd>
             <dt>
               <TierTag tier="med" />
             </dt>
-            <dd>Masked by default. Exact dates, small towns, employers, unique roles, family details.</dd>
+            <dd>Hidden unless you choose to keep them. Exact dates, towns, employers, job titles, family details.</dd>
             <dt>
               <TierTag tier="low" />
             </dt>
-            <dd>Kept by default. Drugs, doses, diagnoses, lab values.</dd>
+            <dd>Kept unless you choose to hide them. Medical terms like medications, doses and diagnoses.</dd>
           </dl>
-          <h2 className="side-h">Nothing is saved</h2>
           <p className="muted">
-            Documents, flags, and the list of real values behind each pseudonym are only kept in memory, by Scrubs
-            on this computer. Nothing is written to disk or a database, and it is all cleared
-            when the app restarts.
+            Something flagged by mistake, like a course name? Add it under Settings &gt; Never mask.
+          </p>
+          <h2 className="side-h">Your documents stay on this computer</h2>
+          <p className="muted">
+            Documents, flagged items and the real words behind each label are only kept in memory while Scrubs is
+            open. They are never saved to disk, and they are cleared when you close the app.
           </p>
         </div>
       )}

@@ -45,6 +45,10 @@ export type Settings = {
   gemini_key_hint: string | null;
   // Where a saved key is kept: Windows Credential Manager (desktop app), this session only, or the demo.
   key_storage: "credential_manager" | "memory" | "demo";
+  // Words and phrases the user told Scrubs never to mask (exact match, any case).
+  never_mask: string[];
   // Only on PUT /settings/gemini-key: false when Google couldn't be reached to check the key.
   verified?: boolean;
+  // Only on PUT /settings/never-mask: how many open documents changed and need another review.
+  documents_updated?: number;
 };

@@ -16,6 +16,7 @@ Endpoints
   GET    /settings                          -> Settings (whether a Gemini key is set, never the key)
   PUT    /settings/gemini-key               {key} -> Settings + verified   (400 if Google rejects it)
   DELETE /settings/gemini-key               -> Settings
+  PUT    /settings/never-mask               {words: [...]} -> Settings + documents_updated
 
 Errors are JSON {"detail": "message safe to show the user"}.
 
@@ -33,7 +34,7 @@ from flask import Flask, Request, jsonify, request
 import config
 import gemini_client
 import pipeline
-from pipeline import lexicon, rules, tagging
+from pipeline import lexicon, merge, rules, tagging
 from pipeline.dates import find_dates, parse, same_day, shift_date
 from pipeline.extract import PdfError, ScannedPdfError, extract_text
 
@@ -142,12 +143,34 @@ def _keep_in_memory_only(key: str) -> None:
 
 save_gemini_key = _keep_in_memory_only     # called with "" to remove the saved key
 KEY_STORAGE = "memory"                     # "memory" | "credential_manager", shown in Settings
+# The never-mask list is saved the same way: the desktop app writes it to a settings file.
+save_never_mask = _keep_in_memory_only     # called with the full list (list[str])
+
+MAX_NEVER_MASK = 300                       # entries
+MAX_NEVER_MASK_CHARS = 100                 # per entry
 
 
 def settings_body() -> dict:
     key = config.GEMINI_API_KEY
     return {"gemini_key_set": bool(key), "gemini_key_hint": key[-4:] if len(key) >= 8 else None,
-            "key_storage": KEY_STORAGE}
+            "key_storage": KEY_STORAGE, "never_mask": list(config.NEVER_MASK)}
+
+
+def apply_never_mask() -> int:
+    """
+    Drop flags on the never-mask list from every document in memory, so a word added in Settings
+    stops being masked right away. A changed document must be reviewed and finalized again.
+    Returns how many documents changed.
+    """
+    words = merge.never_mask_set()
+    changed = 0
+    for doc in DOCS.values():
+        kept = [f for f in doc["flags"] if not merge.is_never_mask(f["text"], words)]
+        if len(kept) != len(doc["flags"]):
+            doc["flags"] = kept
+            doc["status"], doc["pseudonymized_text"] = "needs_review", None
+            changed += 1
+    return changed
 
 
 @app.get("/settings")
@@ -192,6 +215,36 @@ def delete_gemini_key():
     gemini_client.set_key("")
     log.info("settings: Gemini key removed")
     return jsonify(settings_body())
+
+
+@app.put("/settings/never-mask")
+def put_never_mask():
+    body = request.get_json(silent=True)
+    words = body.get("words") if isinstance(body, dict) else None
+    if not isinstance(words, list) or not all(isinstance(w, str) for w in words):
+        return error("Send JSON {\"words\": [\"...\"]}.", 400)
+    clean, seen = [], set()
+    for w in words:
+        w = re.sub(r"\s+", " ", w).strip()
+        if not w:
+            continue
+        if len(w) > MAX_NEVER_MASK_CHARS:
+            return error(f"Each entry can be at most {MAX_NEVER_MASK_CHARS} characters.", 400)
+        key = merge.normalize_phrase(w)
+        if key and key not in seen:
+            seen.add(key)
+            clean.append(w)
+    if len(clean) > MAX_NEVER_MASK:
+        return error(f"The list can hold at most {MAX_NEVER_MASK} entries.", 400)
+    try:
+        save_never_mask(clean)
+    except Exception as e:
+        log.info("settings: never-mask list not saved (%s)", type(e).__name__)
+        return error("The list couldn't be saved on this computer. Try again.", 500)
+    config.NEVER_MASK = clean
+    changed = apply_never_mask()
+    log.info("settings: never-mask list has %d entries, %d documents updated", len(clean), changed)
+    return jsonify(settings_body() | {"documents_updated": changed})
 
 
 @app.errorhandler(413)

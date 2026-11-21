@@ -5,7 +5,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Scrubs",
-  description: "Pseudonymize patient documents before using AI",
+  description: "Hide personal details in your documents before asking an AI chatbot about them",
 };
 
 // Noto Sans is the open base of BC Sans, the BC government typeface the mockups follow.

@@ -142,7 +142,20 @@ export default function Home() {
     setStep("review");
   };
 
-  const [title, subtitle] = needsSetup ? ["Set up the chatbot", ""] : HEADINGS[step];
+  // "Not private? Never mask" on a locked item: add it to the Settings list, then reload every
+  // document, because the backend drops that word from all of them.
+  const neverMask = async (text: string) => {
+    try {
+      const s = await api.saveNeverMask([...(settings?.never_mask ?? []), text]);
+      setSettings(s);
+      loadDocs();
+    } catch (err) {
+      setNotice({ text: errorText(err) });
+    }
+  };
+
+  // Until the key status is known, show only the header, so the upload page never flashes first.
+  const [title, subtitle] = !settingsChecked ? ["", ""] : needsSetup ? ["Set up the chatbot", ""] : HEADINGS[step];
 
   return (
     <Shell
@@ -153,12 +166,17 @@ export default function Home() {
       subtitle={subtitle}
       alert={notice}
       onOpenSettings={() => setShowSettings(true)}
-      hideSteps={needsSetup}
+      hideSteps={!settingsChecked || needsSetup}
     >
       {showSettings && (
-        <SettingsDialog settings={settings} onChange={setSettings} onClose={() => setShowSettings(false)} />
+        <SettingsDialog
+          settings={settings}
+          onChange={setSettings}
+          onDocumentsChanged={loadDocs}
+          onClose={() => setShowSettings(false)}
+        />
       )}
-      {needsSetup ? (
+      {!settingsChecked ? null : needsSetup ? (
         <KeySetup onSaved={setSettings} onSkip={() => setSkippedSetup(true)} />
       ) : loading ? (
         <Loading title={loading.title} steps={loading.steps} />
@@ -170,6 +188,7 @@ export default function Home() {
           onReset={reset}
           onBack={() => setStep("upload")}
           onDone={finish}
+          onNeverMask={neverMask}
         />
       ) : step === "chat" ? (
         <ChatStep

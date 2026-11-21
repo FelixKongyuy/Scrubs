@@ -45,7 +45,7 @@ class Pseudonyms:
 # wherever it appears. Over-masking costs a little readability; a miss is a leak.
 
 NAME_TYPES = {"PERSON", "PROVIDER"}
-NUMBER_TYPES = {"PHONE", "PHN", "MRN", "LICENSE"}
+NUMBER_TYPES = {"PHONE", "PHN", "MRN", "LICENSE", "SIN", "CARD", "IBAN"}
 # Words in a name that say nothing on their own: particles, titles, and relation words that
 # spaCy sometimes includes in a name ("Daughter Claire").
 _NAME_STOPWORDS = {"van", "von", "der", "den", "del", "des", "la", "le", "los", "the", "and",
@@ -144,7 +144,7 @@ def mapping_of(flags: list[dict]) -> dict[str, str]:
     return out
 
 
-# Gemini sometimes rewrites pseudonyms slightly: "[PATIENT_01]", "PATIENT_01", "[Patient 1]".
+# Gemini sometimes rewrites pseudonyms slightly: "[PERSON_01]", "PERSON_01", "[Person 1]".
 # Bracketed forms may use a space and inner padding; bare forms need the underscore, so ordinary
 # text like "Type 2" is never touched. The surrounding spaces are never consumed.
 _TAG_LIKE = re.compile(r"\[\s*([A-Za-z]+)[ _](\d+)\s*\]|\b([A-Za-z]+)_(\d+)\b")
@@ -167,7 +167,7 @@ def restore(answer: str, mapping: dict) -> str:
             return mapping[m.group("plain")]
         name, number = (m.group(g + 1), m.group(g + 2)) if m.group(g + 1) else (m.group(g + 3), m.group(g + 4))
         name = name.upper()
-        for tag in (f"[{name}_{number}]", f"[{name}_{int(number):02d}]"):   # "PATIENT_1" -> [PATIENT_01]
+        for tag in (f"[{name}_{number}]", f"[{name}_{int(number):02d}]"):   # "PERSON_1" -> [PERSON_01]
             if tag in mapping:
                 return mapping[tag]
         return m.group(0)

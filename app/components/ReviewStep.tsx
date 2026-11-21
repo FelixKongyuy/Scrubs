@@ -13,6 +13,8 @@ type Props = {
   onReset: () => void;
   onBack: () => void;
   onDone: () => void;
+  // Adds a wrongly flagged word to the never-mask list in Settings (the only way past a HIGH lock).
+  onNeverMask: (text: string) => void;
 };
 
 const tooltip = (f: Flag) =>
@@ -23,7 +25,7 @@ const spanId = (f: Flag) => `span-${f.flag_code}`;
 const rowId = (f: Flag) => `row-${f.flag_code}`;
 const reveal = (id: string) => document.getElementById(id)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
 
-export default function ReviewStep({ doc, onSetMasked, onSetMany, onReset, onBack, onDone }: Props) {
+export default function ReviewStep({ doc, onSetMasked, onSetMany, onReset, onBack, onDone, onNeverMask }: Props) {
   const [showAI, setShowAI] = useState(false);
   const [filter, setFilter] = useState<Tier | "all">("all");
   const [selected, setSelected] = useState<string | null>(null);
@@ -231,9 +233,25 @@ export default function ReviewStep({ doc, onSetMasked, onSetMany, onReset, onBac
                     <td className="mono flag-table__to">{f.masked ? f.pseudonym : <span className="muted">as written</span>}</td>
                     <td>
                       {f.locked ? (
-                        <span className="locked" title="HIGH items are always masked">
-                          <Icon name="lock" size={14} /> Locked
-                        </span>
+                        <>
+                          <span className="locked" title="HIGH items are always masked">
+                            <Icon name="lock" size={14} /> Locked
+                          </span>
+                          <button
+                            type="button"
+                            className="link-btn never-mask-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const ok = window.confirm(
+                                `Never mask "${f.text}"?\n\nIt will be sent to the chatbot as written, in this and every other document. ` +
+                                  "You can undo this in Settings.",
+                              );
+                              if (ok) onNeverMask(f.text);
+                            }}
+                          >
+                            Not private? Never mask
+                          </button>
+                        </>
                       ) : (
                         <button
                           type="button"
@@ -261,8 +279,8 @@ export default function ReviewStep({ doc, onSetMasked, onSetMany, onReset, onBac
 
           <div className="panel__foot">
             <p className="flags__summary">
-              {maskedCount} {maskedCount === 1 ? "item" : "items"} masked, {keptCount} kept. Medications and diagnoses
-              are kept unless you mask them.
+              {maskedCount} {maskedCount === 1 ? "item" : "items"} masked, {keptCount} kept. Medical terms such as
+              medications and diagnoses are kept unless you mask them.
             </p>
             <span className="kbd-hint">J / K</span> next item · <span className="kbd-hint">M</span> mask or keep
           </div>

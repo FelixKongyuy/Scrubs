@@ -16,6 +16,21 @@ def _is_medical_term(span_text: str) -> bool:
     return len(words) == 1 and words[0] in config.NEVER_REDACT
 
 
+def normalize_phrase(value: str) -> str:
+    """How never-mask entries and flag text are compared: case, spacing and edge punctuation ignored."""
+    return re.sub(r"\s+", " ", value.replace("’", "'")).strip().strip(".,;:!?\"'()[]").lower()
+
+
+def never_mask_set() -> set[str]:
+    return {normalize_phrase(w) for w in config.NEVER_MASK if normalize_phrase(w)}
+
+
+def is_never_mask(span_text: str, words: set[str] | None = None) -> bool:
+    """True if the user put this exact word or phrase on their never-mask list (Settings)."""
+    words = never_mask_set() if words is None else words
+    return bool(words) and normalize_phrase(span_text) in words
+
+
 def _fully_covered(text: str, span: dict, others: list[dict]) -> bool:
     """True if every word inside `span` sits inside at least one of `others`."""
     for w in re.finditer(r"\S+", text[span["start"]:span["end"]]):
@@ -65,8 +80,10 @@ def merge(text: str, rule_spans: list[dict], model_spans: list[dict],
     lexicon_spans = [l for l in lexicon_spans
                      if not l.get("ambiguous") or any(_overlaps(l, g) for g in model_spans)]
 
+    never = never_mask_set()
     spans = [s for s in rule_spans + model_spans + lexicon_spans
-             if not _is_medical_term(text[s["start"]:s["end"]])]
+             if not _is_medical_term(text[s["start"]:s["end"]])
+             and not is_never_mask(text[s["start"]:s["end"]], never)]
 
     # If Presidio's spaCy guessed a PERSON (e.g. "Daughter Claire") and GLiNER already covers
     # every word of it with finer spans ("Daughter" = RELATION, "Claire" = PERSON), keep GLiNER's
@@ -109,6 +126,9 @@ def merge(text: str, rule_spans: list[dict], model_spans: list[dict],
             m["found_by"] = sorted(set(m["found_by"]) | {s["source"]})
         else:
             merged.append({**s, "found_by": [s["source"]]})
+
+    # Two findings can join into a phrase the user put on the never-mask list: drop it too.
+    merged = [m for m in merged if not is_never_mask(text[m["start"]:m["end"]], never)]
 
     # Give each span an id (the frontend uses it for approve/reject) and its text.
     for i, m in enumerate(merged):

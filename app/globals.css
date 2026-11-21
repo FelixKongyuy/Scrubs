@@ -1173,3 +1173,46 @@ p {
 .modal__panel:focus {
   outline: none;
 }
+
+/* ---------- Settings: never-mask list ---------- */
+.modal__panel {
+  max-height: 85vh;
+  overflow-y: auto;
+}
+.never-mask__add {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.never-mask__add .input {
+  flex: 1;
+}
+.never-mask__empty {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+}
+.never-mask__list {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  border: 1px solid var(--border);
+}
+.never-mask__list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+}
+.never-mask__list li + li {
+  border-top: 1px solid var(--border);
+}
+.never-mask-btn {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.tier-legend + .muted {
+  margin-top: var(--space-3);
+}
