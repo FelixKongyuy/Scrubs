@@ -4,7 +4,7 @@
 
 import { ApiError, LOCKED_MSG } from "./errors";
 import * as mock from "./mockApi";
-import type { ChatResponse, Doc, Flag, NewDocument } from "./types";
+import type { ChatResponse, Doc, Flag, NewDocument, Settings } from "./types";
 
 // Literal process.env access so Next inlines both values at build time.
 export const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "1";
@@ -171,7 +171,31 @@ const real = {
     });
     return normalizeChat(body);
   },
+
+  // GET /settings
+  async getSettings(): Promise<Settings> {
+    return normalizeSettings(await request<any>("/settings"));
+  },
+
+  // PUT /settings/gemini-key. The backend checks the key with Google before keeping it.
+  async saveGeminiKey(key: string): Promise<Settings> {
+    return normalizeSettings(await request<any>("/settings/gemini-key", json("PUT", { key }), { timeoutMs: 30_000 }));
+  },
+
+  // DELETE /settings/gemini-key
+  async removeGeminiKey(): Promise<Settings> {
+    return normalizeSettings(await request<any>("/settings/gemini-key", { method: "DELETE" }));
+  },
 };
+
+function normalizeSettings(s: any): Settings {
+  return {
+    gemini_key_set: s?.gemini_key_set === true,
+    gemini_key_hint: typeof s?.gemini_key_hint === "string" ? s.gemini_key_hint : null,
+    key_storage: s?.key_storage === "credential_manager" ? "credential_manager" : "memory",
+    verified: typeof s?.verified === "boolean" ? s.verified : undefined,
+  };
+}
 
 const impl = USE_MOCK ? mock : real;
 
@@ -182,3 +206,9 @@ export const setFlagMasked = (id: string, flagCode: string, masked: boolean) => 
 export const finalizeDocument = (id: string) => impl.finalizeDocument(id);
 export const getMapping = (id: string) => impl.getMapping(id);
 export const chat = (documentIds: string[], message: string) => impl.chat(documentIds, message);
+export const getSettings = () => impl.getSettings();
+export const saveGeminiKey = (key: string) => impl.saveGeminiKey(key);
+export const removeGeminiKey = () => impl.removeGeminiKey();
+
+// Where people get a key. Opened in the system browser by the desktop app.
+export const GEMINI_KEY_URL = "https://aistudio.google.com/apikey";

@@ -137,8 +137,7 @@ def full_flow(c, message="Draft a referral for Margaret Ellison"):
 # ---------- tests ----------
 
 def test_detection_makes_no_network_calls():
-    # CSV, not TiDB: the one read-only TiDB download is allowed (lexicon.py), and is tested in
-    # test_lexicon. Detection itself must make no network calls at all.
+    # Detection must make no network calls at all. The lexicon is read from the bundled CSV.
     lexicon.LEXICON_SOURCE, lexicon._entries = "csv", None
     c = client()
     with NoNetwork() as net:
@@ -236,7 +235,7 @@ def test_unmasking_a_med_flag_sends_it_and_the_leak_check_allows_it():
 
 
 def test_only_allowed_files_import_network_libraries():
-    allowed = {"gemini_client.py", "audit.py", "pipeline/lexicon.py"}
+    allowed = {"gemini_client.py", "audit.py"}
     net = re.compile(r"^\s*(import|from)\s+(requests|urllib|http|socket|httpx|aiohttp|google|pymysql|"
                      r"snowflake|websocket|ftplib|smtplib)\b", re.M)
     offenders = []
@@ -244,7 +243,7 @@ def test_only_allowed_files_import_network_libraries():
         rel = path.relative_to(BACKEND).as_posix()
         if rel.startswith("tests/") or rel in allowed:
             continue
-        if net.search(path.read_text()):
+        if net.search(path.read_text(encoding="utf-8")):
             offenders.append(rel)
     assert offenders == [], offenders
 

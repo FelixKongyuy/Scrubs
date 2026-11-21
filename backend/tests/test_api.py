@@ -496,7 +496,7 @@ def test_chat_without_gemini_key_is_a_clear_error():
         r = c.post("/chat", json={"document_ids": [doc["id"]], "message": "hi"})
     finally:
         config.GEMINI_API_KEY = "test-key"
-    assert r.status_code == 503 and "GEMINI_API_KEY" in r.json["detail"]
+    assert r.status_code == 503 and "Settings" in r.json["detail"]
 
 
 def test_gemini_failure_is_a_clean_502():
@@ -577,11 +577,137 @@ def test_chat_calls_audit_with_counts_only():
     assert isinstance(calls[0]["word_count"], int) and calls[0]["identifier_count"] == 0
 
 
+# ---------- settings: the Gemini key ----------
+
+KEY = "AIzaSyTEST-key-0123456789abcd"
+
+
+class KeyStore:
+    """Stands in for Windows Credential Manager (desktop/launcher.py)."""
+    def __init__(self):
+        self.saved = []
+
+    def __call__(self, key):
+        self.saved.append(key)
+
+
+def settings_client(check=lambda key: None):
+    c = client()
+    store = KeyStore()
+    app_module.save_gemini_key = store
+    gemini_client.check_key = check
+    return c, store
+
+
+def restore_settings():
+    app_module.save_gemini_key = app_module._keep_in_memory_only
+    config.GEMINI_API_KEY = "test-key"
+
+
+def test_settings_never_return_the_key():
+    c, _ = settings_client()
+    try:
+        config.GEMINI_API_KEY = KEY
+        r = c.get("/settings").json
+        assert r == {"gemini_key_set": True, "gemini_key_hint": "abcd", "key_storage": "memory"}
+        assert KEY not in str(r)
+        config.GEMINI_API_KEY = ""
+        assert c.get("/settings").json["gemini_key_set"] is False
+    finally:
+        restore_settings()
+
+
+def test_saving_a_key_checks_it_saves_it_and_uses_it():
+    checked = []
+    c, store = settings_client(check=checked.append)
+    try:
+        config.GEMINI_API_KEY = ""
+        r = c.put("/settings/gemini-key", json={"key": f"  {KEY}\t"})
+        assert r.status_code == 200, r.json
+        assert r.json["gemini_key_set"] is True and r.json["verified"] is True and KEY not in str(r.json)
+        assert checked == [KEY] and store.saved == [KEY] and config.GEMINI_API_KEY == KEY
+        assert gemini_client._client is None                       # rebuilt with the new key
+    finally:
+        restore_settings()
+
+
+def test_rejected_key_is_not_saved():
+    def reject(key):
+        raise gemini_client.InvalidKey()
+    c, store = settings_client(check=reject)
+    try:
+        config.GEMINI_API_KEY = "old-key-still-here"
+        r = c.put("/settings/gemini-key", json={"key": KEY})
+        assert r.status_code == 400 and "rejected" in r.json["detail"]
+        assert store.saved == [] and config.GEMINI_API_KEY == "old-key-still-here"
+    finally:
+        restore_settings()
+
+
+def test_key_is_kept_when_google_cannot_be_reached():
+    def offline(key):
+        raise ConnectionError("no network")
+    c, store = settings_client(check=offline)
+    try:
+        r = c.put("/settings/gemini-key", json={"key": KEY})
+        assert r.status_code == 200 and r.json["verified"] is False and store.saved == [KEY]
+    finally:
+        restore_settings()
+
+
+def test_bad_key_requests():
+    c, store = settings_client()
+    try:
+        for body in (None, {}, {"key": ""}, {"key": "   "}, {"key": 42}, {"key": "short"}, {"key": "has a space in it 012345"}):
+            r = c.put("/settings/gemini-key", json=body)
+            assert r.status_code == 400, (body, r.status_code)
+        assert store.saved == []
+    finally:
+        restore_settings()
+
+
+def test_removing_the_key_turns_chat_off():
+    c, store = settings_client()
+    try:
+        config.GEMINI_API_KEY = KEY
+        r = c.delete("/settings/gemini-key")
+        assert r.status_code == 200 and r.json["gemini_key_set"] is False
+        assert store.saved == [""] and config.GEMINI_API_KEY == ""
+        doc = ready_doc(c)
+        assert c.post("/chat", json={"document_ids": [doc["id"]], "message": "hi"}).status_code == 503
+    finally:
+        restore_settings()
+
+
+def test_failed_save_keeps_the_old_key():
+    def broken(key):
+        raise OSError("credential store locked")
+    c, _ = settings_client()
+    app_module.save_gemini_key = broken
+    try:
+        config.GEMINI_API_KEY = "old-key-still-here"
+        r = c.put("/settings/gemini-key", json={"key": KEY})
+        assert r.status_code == 500 and config.GEMINI_API_KEY == "old-key-still-here"
+    finally:
+        restore_settings()
+
+
+def test_cors_preflight_allows_settings_changes():
+    c = client()
+    for method in ("PUT", "DELETE"):
+        r = c.open("/settings/gemini-key", method="OPTIONS", headers={
+            "Origin": "http://localhost:3000", "Access-Control-Request-Method": method})
+        assert method in r.headers["Access-Control-Allow-Methods"]
+    r = c.open("/settings/gemini-key", method="OPTIONS", headers={
+        "Origin": "https://evil.example", "Access-Control-Request-Method": "PUT"})
+    assert "Access-Control-Allow-Origin" not in r.headers
+
+
 # ---------- misc ----------
 
 def test_health():
     r = client().get("/health").json
-    assert r["ok"] is True and r["lexicon"] in ("tidb", "csv", "off")
+    assert r["ok"] is True and r["lexicon"] in ("csv", "off")
 
 
 def test_cors_preflight_for_the_frontend():

@@ -17,9 +17,9 @@ export default function UploadStep({ onScan, error }: Props) {
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   // Set after mount so the server-rendered page and the browser agree on the date.
-  const [defaultTitle, setDefaultTitle] = useState("Visit note");
+  const [defaultTitle, setDefaultTitle] = useState("Document");
   useEffect(() => {
-    setDefaultTitle(`Visit note, ${new Date().toLocaleDateString("en-CA", { month: "short", day: "numeric" })}`);
+    setDefaultTitle(`Document, ${new Date().toLocaleDateString("en-CA", { month: "short", day: "numeric" })}`);
   }, []);
 
   const pick = (f: File | undefined) => {
@@ -96,12 +96,12 @@ export default function UploadStep({ onScan, error }: Props) {
             />
           </label>
           <label className="field">
-            <span className="field__label">Note text</span>
+            <span className="field__label">Text</span>
             <textarea
               className="textarea"
               rows={5}
               value={text}
-              placeholder="Paste the note here"
+              placeholder="Paste the text here"
               onChange={(e) => setText(e.target.value)}
             />
           </label>
@@ -130,7 +130,7 @@ export default function UploadStep({ onScan, error }: Props) {
                 setText(DEMO_NOTE);
               }}
             >
-              Use the demo note
+              Try a sample note
             </button>
           </div>
         </div>

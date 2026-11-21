@@ -17,10 +17,23 @@ type Props = {
   title: string;
   subtitle?: string;
   alert?: Notice | null;
+  onOpenSettings: () => void;
+  // Hide the step bar on screens outside the three steps (first-run key setup).
+  hideSteps?: boolean;
   children: React.ReactNode;
 };
 
-export default function Shell({ step, enabled, onSelect, title, subtitle, alert, children }: Props) {
+export default function Shell({
+  step,
+  enabled,
+  onSelect,
+  title,
+  subtitle,
+  alert,
+  onOpenSettings,
+  hideSteps,
+  children,
+}: Props) {
   const current = STEPS.findIndex((s) => s.key === step);
 
   return (
@@ -35,28 +48,33 @@ export default function Shell({ step, enabled, onSelect, title, subtitle, alert,
           </div>
           <div className="masthead__right">
             <HowItWorks />
+            <button type="button" className="masthead__link" onClick={onOpenSettings}>
+              Settings
+            </button>
           </div>
         </div>
       </header>
 
       <main className="container content">
-        <ol className="steps" aria-label="Progress">
-          {STEPS.map((s, i) => {
-            const state = i < current ? "done" : i === current ? "current" : "todo";
-            return (
-              <li key={s.key} className={`steps__item steps__item--${state}`} aria-current={i === current ? "step" : undefined}>
-                <span className="steps__num">{i + 1}</span>
-                {enabled[s.key] && i !== current ? (
-                  <button type="button" className="steps__link" onClick={() => onSelect(s.key)}>
-                    {s.label}
-                  </button>
-                ) : (
-                  <span className="steps__label">{s.label}</span>
-                )}
-              </li>
-            );
-          })}
-        </ol>
+        {!hideSteps && (
+          <ol className="steps" aria-label="Progress">
+            {STEPS.map((s, i) => {
+              const state = i < current ? "done" : i === current ? "current" : "todo";
+              return (
+                <li key={s.key} className={`steps__item steps__item--${state}`} aria-current={i === current ? "step" : undefined}>
+                  <span className="steps__num">{i + 1}</span>
+                  {enabled[s.key] && i !== current ? (
+                    <button type="button" className="steps__link" onClick={() => onSelect(s.key)}>
+                      {s.label}
+                    </button>
+                  ) : (
+                    <span className="steps__label">{s.label}</span>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        )}
 
         <div className="page-head">
           <h1>{title}</h1>

@@ -15,7 +15,7 @@ def analyze(text: str) -> list[dict]:
     """
     rule_spans = rules.find(text)        # layer 1: structured IDs (PHN, phone, dates...) + names
     model_spans = detector.detect(text)  # layer 2: names + subtle identifiers (occupation, town...)
-    lex_spans = lexicon.find(text)       # layer 3: known BC towns/facilities/occupations (list from TiDB, matched here)
+    lex_spans = lexicon.find(text)       # layer 3: known BC towns/facilities/occupations (data/lexicon_seed.csv, matched here)
     spans = merge.merge(text, rule_spans, model_spans, lex_spans)
     return risk.to_flags(text, spans)
 

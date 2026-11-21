@@ -48,42 +48,27 @@ def quiet_streams() -> None:
 
 def gemini_key() -> str:
     """The key lives in Windows Credential Manager, never in the installer or a file.
-    On first run, ask for it once."""
+    If there is none yet, the app's first screen asks for it, and Settings can change it."""
     key = os.getenv("GEMINI_API_KEY", "")
     if key:
         return key
     try:
         import keyring
-        key = keyring.get_password(KEYRING_SERVICE, KEYRING_USER) or ""
-    except Exception:
-        keyring = None
-    if not key and not HEADLESS:
-        key = ask_for_key()
-        if key and keyring:
-            try:
-                keyring.set_password(KEYRING_SERVICE, KEYRING_USER, key)
-            except Exception:
-                pass
-    return key
-
-
-def ask_for_key() -> str:
-    try:
-        import tkinter as tk
-        from tkinter import simpledialog
+        return keyring.get_password(KEYRING_SERVICE, KEYRING_USER) or ""
     except Exception:
         return ""
-    root = tk.Tk()
-    root.withdraw()
-    key = simpledialog.askstring(
-        "Scrubs",
-        "Paste your Gemini API key.\n\nIt is saved in Windows Credential Manager on this computer.\n"
-        "Leave it blank to use Scrubs without the chatbot.",
-        show="*",
-        parent=root,
-    )
-    root.destroy()
-    return (key or "").strip()
+
+
+def save_key_to_credential_manager(key: str) -> None:
+    """Called by the backend's Settings endpoints. An empty key removes the saved one."""
+    import keyring
+    if key:
+        keyring.set_password(KEYRING_SERVICE, KEYRING_USER, key)
+        return
+    try:
+        keyring.delete_password(KEYRING_SERVICE, KEYRING_USER)
+    except keyring.errors.PasswordDeleteError:
+        pass                                          # nothing was saved
 
 
 def free_port() -> int:
@@ -113,6 +98,13 @@ def build_app():
     from pipeline import lexicon
 
     lexicon.SEED_CSV = DATA_DIR / "lexicon_seed.csv"  # the bundled copy
+    try:
+        import keyring
+        keyring.get_keyring()                          # fails here if there is no usable backend
+        backend.save_gemini_key = save_key_to_credential_manager
+        backend.KEY_STORAGE = "credential_manager"
+    except Exception:
+        pass                                           # Settings still works, for this session only
     flask_app = backend.app
 
     # The API routes (/documents, /chat, ...) are more specific, so Flask matches them first.

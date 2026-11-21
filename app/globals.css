@@ -870,11 +870,6 @@ p {
   flex-direction: column;
   min-height: calc(100vh - 170px);
 }
-.prompt-row {
-  display: flex;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
 .split-head {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1011,10 +1006,6 @@ p {
   color: var(--text-muted);
   font-size: var(--text-md);
 }
-.chat-empty .prompt-row {
-  justify-content: center;
-  margin-top: var(--space-4);
-}
 .thinking {
   color: var(--text-muted);
   font-size: var(--text-md);
@@ -1120,4 +1111,65 @@ p {
   background: var(--surface-muted);
   border-radius: 3px;
   padding: 0 3px;
+}
+
+/* ---------- Gemini key: first-run setup and Settings ---------- */
+.setup {
+  max-width: 620px;
+}
+.setup p + form {
+  margin-top: var(--space-4);
+}
+.setup__skip {
+  margin-top: var(--space-4);
+  font-size: var(--text-sm);
+}
+.key-input {
+  display: flex;
+  gap: var(--space-2);
+}
+.key-input .input {
+  flex: 1;
+}
+.key-help {
+  font-size: var(--text-sm);
+  margin: 0;
+}
+.key-status {
+  margin-bottom: var(--space-1);
+}
+.modal__panel .muted + form {
+  margin-top: var(--space-4);
+}
+.key-note {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: var(--text-sm);
+}
+.key-banner {
+  margin: 0;
+  padding: var(--space-3) var(--space-5);
+  background: var(--tier-med-bg);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-md);
+}
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: start center;
+  padding: 10vh var(--space-4) var(--space-4);
+  background: rgba(11, 47, 78, 0.35);
+}
+.modal__panel {
+  width: 480px;
+  max-width: 100%;
+  padding: var(--space-5);
+  border-top: 4px solid var(--masthead-rule);
+}
+.modal__panel:focus {
+  outline: none;
 }

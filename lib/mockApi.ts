@@ -4,7 +4,7 @@
 import { detect, makeDoc, seedDocs } from "./mockData";
 import { ApiError, LOCKED_MSG } from "./errors";
 import { containsTerm, mappingOf, pseudonymize, replaceAll, sentValue, wordCount } from "./text";
-import type { ChatResponse, Doc, NewDocument } from "./types";
+import type { ChatResponse, Doc, NewDocument, Settings } from "./types";
 
 let store: Doc[] | null = null;
 const db = () => (store ??= seedDocs().map(finalized));
@@ -101,6 +101,28 @@ export async function chat(documentIds: string[], message: string): Promise<Chat
   outboundLog.push({ document_ids: documentIds, word_count: wordCount(outbound_text), identifier_count, model: "gemini", sent_at: new Date().toISOString() });
   await new Promise((r) => setTimeout(r, 900));
   return { answer_with_pseudonyms: mockAnswer(docs, message), outbound_text, identifier_count };
+}
+
+// The demo's chatbot is canned, so it starts with a key "set" and never needs a real one.
+let demoSettings: Settings = { gemini_key_set: true, gemini_key_hint: null, key_storage: "demo" };
+
+// GET /settings
+export async function getSettings(): Promise<Settings> {
+  return { ...demoSettings };
+}
+
+// PUT /settings/gemini-key. Nothing is checked or kept: this is the public demo.
+export async function saveGeminiKey(key: string): Promise<Settings> {
+  const k = key.trim();
+  if (!k) throw new ApiError("server", "Paste your Gemini API key.", 400);
+  demoSettings = { ...demoSettings, gemini_key_set: true, gemini_key_hint: k.length >= 8 ? k.slice(-4) : null };
+  return { ...demoSettings, verified: false };
+}
+
+// DELETE /settings/gemini-key
+export async function removeGeminiKey(): Promise<Settings> {
+  demoSettings = { ...demoSettings, gemini_key_set: false, gemini_key_hint: null };
+  return { ...demoSettings };
 }
 
 // Canned Gemini answers, written only from what Gemini would have received.

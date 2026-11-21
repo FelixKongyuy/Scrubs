@@ -11,7 +11,7 @@ We built it at StormHacks 2026 (Armin, Felix, Krish and Nathan).
 1. Upload a text-based PDF or paste a note.
 2. Scrubs looks for identifiers in three ways. Presidio handles the standard ones and we added BC rules to it (PHN check digit, postal codes, MRNs, prescriber numbers). GLiNER, a small local model, catches indirect ones like "the retired town pharmacist". A list of BC towns, facilities and job titles catches the rest.
 3. You review the flags. HIGH items (names, health numbers, addresses) are always masked. MED items (exact dates, small towns, employers) are masked unless you unmask them. LOW items (drugs, doses, diagnoses) are kept unless you mask them. Click any highlight to change it.
-4. You chat. Ask for a referral letter, a discharge summary or a handoff note. Gemini only gets the placeholders. Dates are moved by the same number of days, so the gaps between them stay right.
+4. You chat. Ask questions about your documents, or ask for a summary or a draft. Gemini only gets the placeholders. Dates are moved by the same number of days, so the gaps between them stay right.
 
 Documents, flags and the placeholder mapping are kept in memory only and are gone when you restart. The one exception is the optional Snowflake audit log, which records mask and unmask decisions as counts with no document text.
 
@@ -22,12 +22,12 @@ Documents, flags and the placeholder mapping are kept in memory only and are gon
 1. Download `Scrubs-0.1.0.msi` from the [Releases page](../../releases). It's about 930 MB.
 2. Run it. The installer isn't code-signed, so Windows will show "Windows protected your PC". Click **More info**, then **Run anyway**.
 3. Pick an install folder or keep the default (`C:\Program Files\Scrubs`).
-4. Open Scrubs. The first time, it asks for a Gemini API key and saves it in Windows Credential Manager. You can leave it blank and use Scrubs without the chat.
-5. It shows "Starting Scrubs" for up to a minute while the detection models load.
+4. Open Scrubs. It shows "Starting Scrubs" for up to a minute while the detection models load.
+5. The first screen asks for your Gemini API key (get one free at https://aistudio.google.com/apikey). Scrubs checks it with Google and saves it in Windows Credential Manager. You can skip this and use detection and review without the chat.
 
 Detection runs on your computer. The only thing that goes over the internet is the masked text you send to the chat.
 
-To change the API key, open Credential Manager, go to Windows Credentials, delete the **Scrubs** entry and restart the app. To uninstall, use Settings > Apps.
+To change or remove the API key later, click **Settings** in the top right of the app. To uninstall, use Settings > Apps.
 
 ## Running it locally
 
@@ -42,7 +42,7 @@ cd backend
 .venv\Scripts\python app.py
 ```
 
-Put your `GEMINI_API_KEY` in `.env` before starting. The API runs on http://127.0.0.1:5000.
+Put your `GEMINI_API_KEY` in `.env`, or add it from **Settings** in the app (a key added there lasts until the backend restarts). The API runs on http://127.0.0.1:5000.
 
 Frontend, in a second terminal from the repo root:
 
@@ -67,7 +67,7 @@ It runs on http://localhost:3000. To try the frontend with sample data and no ba
 ## Sponsor tracks
 
 - Gemini API runs the chat, and only ever sees masked text.
-- TiDB holds a database of known sensitive terms that are easy to miss or ambiguous, like small towns, facilities and identifying job titles. The app downloads it read-only and matches against it locally.
+- A bundled list of known sensitive terms that are easy to miss or ambiguous, like small towns, facilities and identifying job titles, is matched locally.
 - Python: the whole backend is Python, including detection (Presidio, GLiNER), masking, date shifting and the Flask API.
 
 ## Limits

@@ -16,7 +16,7 @@ The shared source of truth for the whole team. Read it before writing code and f
 | Lane | Owner | Branch | Owns these files |
 |---|---|---|---|
 | Backend and integration lead | **Krish** | `Krish` | `backend/` (except the files Nathan owns), `requirements.txt` |
-| Sponsor data (TiDB + Snowflake) | **Nathan** | `Nathan` | `backend/pipeline/lexicon.py`, `backend/audit.py`, `data/lexicon_seed.csv`, `scripts/`, `TIDB_SETUP.md` |
+| Lexicon + audit (Snowflake) | **Nathan** | `Nathan` | `backend/pipeline/lexicon.py`, `backend/audit.py`, `data/lexicon_seed.csv` |
 | Frontend | **Armin** | `Armin` | `app/`, `lib/`, `package.json` |
 | Evaluation, pitch, submission | **Felix** | `Felix` | `eval/`, slides, video, Devpost, .tech deployment |
 
@@ -42,9 +42,8 @@ Full tasks and acceptance criteria per lane are in **section 15**.
 
 | Before | Now | Why |
 |---|---|---|
-| Encrypted vault of mappings in TiDB | **No vault.** Documents and mappings live only in the backend's memory and the clinician's browser. Nothing is written to disk or any database. | Storing identifiers in a cloud database, even encrypted, contradicts the pitch. No stored mapping means nothing to steal. |
-| TiDB = vault + vector name linking | **TiDB = public BC lexicon** (towns, facilities, identifying occupations). The backend downloads it read-only and matches locally. | A real job for TiDB that never sends patient data up. The database enforces it with a read-only user. |
-| TiDB vector search links name variants | **Name variants are linked locally** (normalize, strip titles, match surnames). Vector search is used offline to grow the lexicon from public data. | Embedding patient names in TiDB would send identifiers to the cloud. |
+| Encrypted vault of mappings in a cloud database | **No vault.** Documents and mappings live only in the backend's memory and the clinician's browser. Nothing is written to disk or any database. | Storing identifiers in a cloud database, even encrypted, contradicts the pitch. No stored mapping means nothing to steal. |
+| Vector search links name variants | **Name variants are linked locally** (normalize, strip titles, match surnames). | Embedding patient names in a cloud service would send identifiers out. |
 | FastAPI | **Flask** | The backend is already built and tested in Flask. Same routes and shapes as section 10. |
 | Snowflake `outbound_log.sent_text` | **Counts only** (word count, identifier count, model). No text. | Snowflake holds decisions and counts, never text. |
 | Our model = GLiNER zero-shot | GLiNER **medium** + **BC lexicon** + Presidio custom recognizers | Testing showed GLiNER small missed names and occupations. |
@@ -99,7 +98,6 @@ Other supported prompts: discharge summaries, pre-visit chart summaries, shift h
 |---|---|---|
 | Best MedTech / Grand Prize | The core use case | All |
 | Gemini API | The chatbot over pseudonymized text. Optional leak check on outbound text. Generates synthetic training data. Never send raw PHI to Gemini. | Krish |
-| TiDB | Public BC lexicon pulled down read-only and matched locally ("hospitals pull rules down, nothing goes up"). Optional: vector search to grow the lexicon from public data. | Nathan |
 | Snowflake | Audit log of mask and unmask decisions, and counts-only outbound log. Analytics on decisions only. Optional: Cortex as a second chat model. | Nathan |
 | .tech domain | Public demo site, synthetic data only | Felix |
 | SSSS Python | Backend is Python | Krish |
@@ -116,7 +114,7 @@ Three screens with a step indicator: **Upload, Review, Chat**.
 1. **Upload:** PDF (pdfplumber, in memory) or pasted text. Skip scanned PDFs.
 2. **Pass 1, Presidio + BC rules:** names, phone, email, dates, BC PHN with check digit, postal codes, MRN, prescriber license.
 3. **Pass 2, our model (GLiNER):** indirect identifiers (location descriptions, unique roles, family details, person descriptions, employers) plus clinical terms (drug, dose, diagnosis, lab value) labeled LOW.
-4. **Pass 3, BC lexicon (from TiDB, matched locally):** known BC towns, facilities, identifying occupations.
+4. **Pass 3, BC lexicon (bundled CSV, matched locally):** known BC towns, facilities, identifying occupations.
 5. **Merge:** combine all passes. Drop clinical eponyms ("Parkinson's", "Foley") from person flags. Link name variants locally.
 6. **Review:** the clinician masks or unmasks within the rules in section 6. Every change goes to the Snowflake audit log.
 7. **Pseudonymize (finalize):** masked values become consistent pseudonyms. Dates shift by one offset per patient. The mapping stays in memory.
@@ -159,10 +157,10 @@ Rules:
 - Labels and threshold live in `backend/config.py`. Testing showed labels compete: adding "doctor" lifts provider names, and "family member" beats "family relationship". The threshold is about 0.3. Tune on Felix's eval notes, never by guessing.
 - In the pitch say "fine-tuned on synthetic clinical notes" only if we actually fine-tune. Never claim training on real documents.
 
-### 7.3 BC lexicon (`backend/pipeline/lexicon.py`, data from TiDB)
+### 7.3 BC lexicon (`backend/pipeline/lexicon.py`, data in `data/lexicon_seed.csv`)
 - About 330 public entries: BC communities, BC facilities, identifying occupations. `ambiguous=1` marks entries that are also common words or names (Hope, Golden, Nelson, judge). Those only count when GLiNER flags the same spot.
 - Case-sensitive, whole-word, longest match first.
-- Loaded once, read-only, from TiDB. Falls back to `data/lexicon_seed.csv` if TiDB is unreachable.
+- Loaded once from `data/lexicon_seed.csv`. No network access.
 
 ### 7.4 Merge (`backend/pipeline/merge.py`)
 - Keep every finding from every pass (a miss is a leak, an extra flag is one click).
@@ -210,17 +208,11 @@ Pseudonym prefixes and flag labels (the frontend shows `label`):
 
 | Data | Lives in | Never goes to |
 |---|---|---|
-| Original document text, flags, mapping, date offsets | Backend process memory (a Python dict) and the clinician's browser. Cleared on restart. | Disk, TiDB, Snowflake, Gemini, logs |
-| Pseudonymized text | Backend memory, and Gemini when the user chats | Snowflake, TiDB, logs |
-| BC lexicon (public) | TiDB `bc_lexicon`, plus a copy in backend memory | |
+| Original document text, flags, mapping, date offsets | Backend process memory (a Python dict) and the clinician's browser. Cleared on restart. | Disk, Snowflake, Gemini, logs |
+| Pseudonymized text | Backend memory, and Gemini when the user chats | Snowflake, logs |
+| BC lexicon (public) | `data/lexicon_seed.csv`, plus a copy in backend memory | |
 | Mask and unmask decisions | Snowflake `audit_log` | |
 | Outbound counts | Snowflake `outbound_log` | |
-
-### TiDB
-```
-bc_lexicon(id, phrase, type ENUM-like 'LOCATION'|'FACILITY'|'OCCUPATION', ambiguous BOOL, version, updated_at)
-```
-The backend connects as a read-only user (`GRANT SELECT` only).
 
 ### Snowflake
 ```
@@ -242,7 +234,7 @@ No column ever holds original or pseudonymized text.
 - `POST /documents/{id}/finalize`: builds `pseudonymized_text`, sets status `ready`.
 - `GET /documents/{id}/mapping`: pseudonym-to-real mapping, for client re-identification.
 - `POST /chat`: body `{document_ids, message}`. Tags the message, runs the leak check, sends to Gemini, calls `audit.log_outbound`, returns `ChatResponse`.
-- `GET /health`: `{ok, gliner, lexicon: "tidb" | "csv" | "off"}`.
+- `GET /health`: `{ok, gliner, lexicon: "csv" | "off"}`.
 
 `Flag.source` is `"presidio" | "model" | "lexicon"`.
 
@@ -322,10 +314,10 @@ F4, F5 and F6 must come from our model or lexicon (`source` "model" or "lexicon"
 
 ## 14. Hard rules (every person and every Claude Code session)
 
-1. **Never send original values anywhere outside the backend process and the clinician's browser.** Not to Gemini, Snowflake, TiDB or logs.
+1. **Never send original values anywhere outside the backend process and the clinician's browser.** Not to Gemini, Snowflake or logs.
 2. **Nothing is written to disk.** Uploads are read in memory. No database holds documents or mappings.
 3. **Logs contain counts only** ("3 Person, 1 PHN"). Never print or log note text while debugging.
-4. **Network calls only in:** `gemini_client.py` (pseudonymized text), `audit.py` (decisions and counts), `lexicon.py` (one read-only TiDB download). Everything else must work with Wi-Fi off.
+4. **Network calls only in:** `gemini_client.py` (pseudonymized text), `audit.py` (decisions and counts). Everything else must work with Wi-Fi off.
 5. **Synthetic data only.** Never real patient records, not even to test.
 6. Secrets only in `.env` (gitignored). Never paste keys into a chat or commit them.
 7. The backend binds to `127.0.0.1` by default. CORS allows the frontend origin only.
@@ -341,7 +333,7 @@ Keep it small. Each lane's Musts come first. Don't start a Should until your Mus
 **Context:** the pipeline (Presidio + GLiNER + merge + tagging + Gemini client) is built and tested in Flask, but it currently uses its own stateless endpoints, RED/YELLOW levels and `[PERSON_1]` tags. Your job is to make it speak this file's API, tiers and pseudonyms, and to integrate everyone else's work.
 
 **Must**
-1. Merge the TiDB lexicon add-on and push the backend to `main` first, so the others build on it.
+1. Push the backend to `main` first, so the others build on it.
 2. Implement section 10 endpoints in Flask with an in-memory store, returning shapes that match `lib/types.ts`. Allow CORS from `http://localhost:3000`.
 3. Convert levels to section 6 tiers, labels and pseudonyms (section 8). Flag codes F1, F2... in reading order. Locked HIGH. Ages 89 and under not flagged. A short reason per flag.
 4. Add MRN and prescriber license recognizers. Add GLiNER labels for location description, unique role, family detail, person description, drug, dose, diagnosis, lab value.
@@ -359,25 +351,23 @@ Keep it small. Each lane's Musts come first. Don't start a Should until your Mus
 
 **Should:** document-level risk ("3 details combined" escalation), Gemini leak-check pass, Snowflake Cortex as a second model.
 
-### Nathan: sponsor data (TiDB + Snowflake)
+### Nathan: lexicon and audit (Snowflake)
 
-**Context:** the lexicon code, seed data, seed and verify scripts are written and tested. Follow `TIDB_SETUP.md`. Snowflake is new work in `backend/audit.py`.
+**Context:** the lexicon code and seed data are written and tested. Snowflake is new work in `backend/audit.py`.
 
 **Must**
-1. TiDB: create the cluster, a seeder user and a **read-only** gateway user. Fill `.env`. Run `scripts/seed_lexicon.py`, then `scripts/verify_lexicon.py`.
-2. Make sure the demo's places are covered: Hope (ambiguous), Fraser Canyon Hospital, Vancouver. Add 50+ more small BC communities and identifying occupations (public info only).
-3. Snowflake: create `audit_log` and `outbound_log` (section 9). Write `backend/audit.py` with the two functions in section 10. No-op when unconfigured, never raise, never accept text.
-4. Push the `audit.py` interface to `main` by 4:00 AM, even as a no-op, so Krish can call it.
+1. Make sure the demo's places are covered: Hope (ambiguous), Fraser Canyon Hospital, Vancouver. Add 50+ more small BC communities and identifying occupations (public info only).
+2. Snowflake: create `audit_log` and `outbound_log` (section 9). Write `backend/audit.py` with the two functions in section 10. No-op when unconfigured, never raise, never accept text.
+3. Push the `audit.py` interface to `main` by 4:00 AM, even as a no-op, so Krish can call it.
 
 **Acceptance criteria**
-- [ ] `verify_lexicon.py` prints: read OK, write blocked, source `tidb`. Screenshot saved for Devpost.
-- [ ] `GET /health` shows `"lexicon": "tidb"` with TiDB configured and `"csv"` without.
+- [ ] `GET /health` shows `"lexicon": "csv"`.
 - [ ] Unmasking a MED flag in the UI adds one `audit_log` row. No column contains document text.
 - [ ] Each chat message adds one `outbound_log` row with counts only.
-- [ ] With `SNOWFLAKE_*` and `TIDB_*` unset, the whole app still works.
+- [ ] With `SNOWFLAKE_*` unset, the whole app still works.
 - [ ] One Snowflake worksheet query (decisions by tier, unmask rate) with a screenshot for Devpost.
 
-**Should:** `scripts/expand_lexicon.py` using TiDB vector search on public phrase pools (suggestions are reviewed by a person before going into the CSV).
+**Should:** grow the lexicon from public phrase pools (suggestions are reviewed by a person before going into the CSV).
 
 ### Armin: frontend
 
@@ -411,7 +401,7 @@ Keep it small. Each lane's Musts come first. Don't start a Should until your Mus
 - [ ] `python eval/run.py` prints a table: recall HIGH, recall MED, clinical terms wrongly removed, for both systems. Numbers come from a real run.
 - [ ] One before/after number on a slide.
 - [ ] Backup video recorded by 10:30 AM.
-- [ ] Devpost submitted by 11:00 AM with screenshots (including Nathan's TiDB and Snowflake screenshots) and the repo link.
+- [ ] Devpost submitted by 11:00 AM with screenshots (including Nathan's Snowflake screenshots) and the repo link.
 - [ ] The .tech URL loads the app.
 
 **Should:** a Gemini "attacker" that tries to re-identify the patient from Presidio's output vs ours (cleaned text only).
@@ -438,14 +428,13 @@ Optional live proof: open the browser Network tab during chat, or turn Wi-Fi off
 - "Doesn't the AI still learn something?" Yes, the clinical content, on purpose. Identifiers are pseudonymized and dates shifted.
 - "Is this encryption?" No, it's pseudonymization. And there's no stored mapping to steal.
 - "Why not run a local model for everything?" Laptop-sized models are weak at clinical reasoning, so staff would go back to ChatGPT. The local model only detects. Gemini reasons.
-- "Why TiDB?" Hospitals pull BC rules down and nothing goes up. The database enforces it with a read-only user.
 - "Why Snowflake?" An audit trail of every privacy decision, with no patient text in it.
 
 ---
 
 ## 17. Stack and repo layout
 
-**Python · Flask · Presidio · GLiNER · pdfplumber · TiDB · Snowflake · Gemini API · Next.js · .tech**
+**Python · Flask · Presidio · GLiNER · pdfplumber · Snowflake · Gemini API · Next.js · .tech**
 
 ```
 backend/
@@ -458,18 +447,16 @@ backend/
     extract.py          PDF/DOCX/TXT to text, in memory
     rules.py            Presidio + BC rules, leak check
     detector.py         GLiNER
-    lexicon.py          TiDB lexicon (Nathan)
+    lexicon.py          BC lexicon, matched locally (Nathan)
     merge.py            combine passes
     risk.py             tiers and reasons
     tagging.py          pseudonyms, restore
   tests/
 app/                    Next.js frontend (Armin)
 lib/                    API client, types (the contract), mocks
-data/lexicon_seed.csv   public lexicon, fallback copy (Nathan)
-scripts/                seed_lexicon.py, verify_lexicon.py (Nathan, run by hand)
+data/lexicon_seed.csv   public BC lexicon (Nathan)
 eval/                   notes, labels, run.py (Felix)
 IMPLEMENTATION.md, PROCESS.md   backend design notes
-TIDB_SETUP.md           TiDB guide (Nathan)
 ```
 
 Run: backend `cd backend && python app.py`. Frontend `npm install && npm run dev` from the repo root.
@@ -479,7 +466,7 @@ Run: backend `cd backend && python app.py`. Frontend `npm install && npm run dev
 ## 18. Data rules and environment
 
 - Synthetic data only. Real PDFs are gitignored. Synthetic demo files go in `data/samples/`.
-- `.env.example` lists: `GEMINI_API_KEY`, `GEMINI_MODEL`, `GLINER_MODEL`, `USE_GLINER`, `HF_HUB_OFFLINE`, `LEXICON_SOURCE`, `TIDB_HOST`, `TIDB_PORT`, `TIDB_DATABASE`, `TIDB_USER`, `TIDB_PASSWORD`, `TIDB_ADMIN_USER`, `TIDB_ADMIN_PASSWORD`, `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_PASSWORD` (or token), `SNOWFLAKE_DATABASE`, `SNOWFLAKE_WAREHOUSE`. Frontend: `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_USE_MOCK`.
+- `.env.example` lists: `GEMINI_API_KEY`, `GEMINI_MODEL`, `GLINER_MODEL`, `USE_GLINER`, `HF_HUB_OFFLINE`, `LEXICON_SOURCE`, `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_PASSWORD` (or token), `SNOWFLAKE_DATABASE`, `SNOWFLAKE_WAREHOUSE`. Frontend: `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_USE_MOCK`.
 - After GLiNER downloads once, set `HF_HUB_OFFLINE=1` so it never contacts Hugging Face again.
 
 ---
@@ -495,7 +482,7 @@ Run: backend `cd backend && python app.py`. Frontend `npm install && npm run dev
 
 ### Starter prompts
 
-- **Krish:** "Read CLAUDE.md. Do my lane in section 15 in order, stopping after each Must to show me results. Start by merging the TiDB lexicon add-on, then the section 10 endpoints."
-- **Nathan:** "Read CLAUDE.md and TIDB_SETUP.md. I've filled TIDB_* in .env myself (don't print it). Do my lane in section 15: seed and verify TiDB, extend the lexicon, then build backend/audit.py for Snowflake. Stop after each Must."
+- **Krish:** "Read CLAUDE.md. Do my lane in section 15 in order, stopping after each Must to show me results. Start with the section 10 endpoints."
+- **Nathan:** "Read CLAUDE.md. Do my lane in section 15: extend the lexicon, then build backend/audit.py for Snowflake. Stop after each Must."
 - **Armin:** "Read CLAUDE.md, especially sections 10, 11 and 15 (Armin). Switch lib/api.ts from mocks to the real backend behind NEXT_PUBLIC_USE_MOCK, add the lexicon source, and handle errors. Stop after each Must."
 - **Felix:** "Read CLAUDE.md, especially sections 12, 13 and 15 (Felix). Help me write 20+ synthetic eval notes with labels, then build eval/run.py comparing default Presidio to our pipeline. Never use real patient data."

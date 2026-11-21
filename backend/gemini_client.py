@@ -31,11 +31,36 @@ Pseudonymized documents:
 _client = None
 
 
+class InvalidKey(Exception):
+    """Google rejected the API key (wrong, revoked, or for another API)."""
+
+
+def set_key(key: str) -> None:
+    """Use a new key from now on (Settings screen). The next request builds a new client."""
+    global _client
+    config.GEMINI_API_KEY = key
+    _client = None
+
+
+def check_key(key: str) -> None:
+    """
+    One cheap call that sends NO document text: list a single model. Raises InvalidKey when
+    Google rejects the key, and any other exception (offline, timeout) as it is.
+    """
+    client = genai.Client(api_key=key)       # keep a reference: the library closes unreferenced clients
+    try:
+        next(iter(client.models.list(config={"page_size": 1})), None)
+    except Exception as e:
+        if getattr(e, "code", None) in (400, 401, 403):
+            raise InvalidKey() from e
+        raise
+
+
 def _get_client():
     global _client
     if _client is None:
         if not config.GEMINI_API_KEY:
-            raise RuntimeError("GEMINI_API_KEY is not set (see .env.example)")
+            raise RuntimeError("No Gemini API key. Add one in Settings.")
         _client = genai.Client(api_key=config.GEMINI_API_KEY)
     return _client
 

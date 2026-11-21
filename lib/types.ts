@@ -38,3 +38,13 @@ export type ChatResponse = {
 };
 
 export type NewDocument = { kind: "pdf"; file: File } | { kind: "paste"; title: string; text: string };
+
+// GET /settings. The key itself never comes back, only whether one is set and its last 4 characters.
+export type Settings = {
+  gemini_key_set: boolean;
+  gemini_key_hint: string | null;
+  // Where a saved key is kept: Windows Credential Manager (desktop app), this session only, or the demo.
+  key_storage: "credential_manager" | "memory" | "demo";
+  // Only on PUT /settings/gemini-key: false when Google couldn't be reached to check the key.
+  verified?: boolean;
+};

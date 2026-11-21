@@ -13,6 +13,9 @@ Endpoints
   POST   /documents/<id>/finalize           -> Doc with pseudonymized_text, status "ready"
   GET    /documents/<id>/mapping            -> {pseudonym: real value} for client re-identification
   POST   /chat                              {document_ids, message} -> ChatResponse
+  GET    /settings                          -> Settings (whether a Gemini key is set, never the key)
+  PUT    /settings/gemini-key               {key} -> Settings + verified   (400 if Google rejects it)
+  DELETE /settings/gemini-key               -> Settings
 
 Errors are JSON {"detail": "message safe to show the user"}.
 
@@ -123,9 +126,72 @@ def allow_frontend(resp):
     if origin in config.FRONTEND_ORIGINS:
         resp.headers["Access-Control-Allow-Origin"] = origin
         resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
-        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PATCH, OPTIONS"
+        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PATCH, PUT, DELETE, OPTIONS"
     resp.headers["Vary"] = "Origin"
     return resp
+
+
+# ---------- Gemini API key (Settings screen) ----------
+# Responses only say whether a key is set and show its last 4 characters. The key is never
+# logged and never returned. Where a saved key is kept is decided by whoever runs the app:
+# the desktop app replaces save_gemini_key to use Windows Credential Manager (desktop/launcher.py).
+# Running from source, a key entered in Settings lasts until restart; put it in .env to keep it.
+def _keep_in_memory_only(key: str) -> None:
+    pass
+
+
+save_gemini_key = _keep_in_memory_only     # called with "" to remove the saved key
+KEY_STORAGE = "memory"                     # "memory" | "credential_manager", shown in Settings
+
+
+def settings_body() -> dict:
+    key = config.GEMINI_API_KEY
+    return {"gemini_key_set": bool(key), "gemini_key_hint": key[-4:] if len(key) >= 8 else None,
+            "key_storage": KEY_STORAGE}
+
+
+@app.get("/settings")
+def get_settings():
+    return jsonify(settings_body())
+
+
+@app.put("/settings/gemini-key")
+def put_gemini_key():
+    body = request.get_json(silent=True)
+    key = body.get("key") if isinstance(body, dict) else None
+    if not isinstance(key, str) or not key.strip():
+        return error("Paste your Gemini API key.", 400)
+    key = key.strip()
+    if not 20 <= len(key) <= 200 or re.search(r"\s", key):
+        return error("That doesn't look like a Gemini API key. Copy it again from Google AI Studio.", 400)
+    try:
+        gemini_client.check_key(key)
+        verified = True
+    except gemini_client.InvalidKey:
+        return error("Google rejected this key. Check that you copied all of it, then try again.", 400)
+    except Exception as e:                    # offline or Google busy: keep the key, say it's unchecked
+        log.info("settings: key not verified (%s)", type(e).__name__)
+        verified = False
+    try:
+        save_gemini_key(key)
+    except Exception as e:
+        log.info("settings: key not saved (%s)", type(e).__name__)
+        return error("The key couldn't be saved on this computer. Try again.", 500)
+    gemini_client.set_key(key)
+    log.info("settings: Gemini key updated (verified=%s)", verified)
+    return jsonify(settings_body() | {"verified": verified})
+
+
+@app.delete("/settings/gemini-key")
+def delete_gemini_key():
+    try:
+        save_gemini_key("")
+    except Exception as e:
+        log.info("settings: key not removed (%s)", type(e).__name__)
+        return error("The saved key couldn't be removed. Try again.", 500)
+    gemini_client.set_key("")
+    log.info("settings: Gemini key removed")
+    return jsonify(settings_body())
 
 
 @app.errorhandler(413)
@@ -135,7 +201,7 @@ def too_large(_e):
 
 @app.get("/health")
 def health():
-    return {"ok": True, "gliner": config.USE_GLINER, "lexicon": lexicon.load()}  # "tidb" | "csv" | "off"
+    return {"ok": True, "gliner": config.USE_GLINER, "lexicon": lexicon.load()}  # "csv" | "off"
 
 
 @app.post("/documents")
@@ -293,7 +359,7 @@ def chat():
                        blocked_reason=reason)
 
     if not config.GEMINI_API_KEY:
-        return error("Gemini isn't set up. Add GEMINI_API_KEY to .env and restart the backend.", 503)
+        return error("The chatbot needs a Gemini API key. Add one in Settings.", 503)
     try:
         answer = gemini_client.ask(note, [], safe_message)
     except Exception as e:

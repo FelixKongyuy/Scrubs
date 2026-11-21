@@ -7,7 +7,9 @@ from dotenv import load_dotenv
 load_dotenv()  # reads ../.env or ./.env if present (API keys etc.)
 
 # ---------- Gemini (the only thing that talks to the internet) ----------
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+# Read from .env or the environment at startup, and replaced at runtime from the Settings screen
+# (app.py /settings). The desktop app fills it from Windows Credential Manager.
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")  # check Google's docs for the current model name
 # Tried in order when the main model stays busy (503 "high demand"). Comma-separated in .env.
 GEMINI_FALLBACK_MODELS = [m.strip() for m in os.getenv("GEMINI_FALLBACK_MODELS", "gemini-3.7-flash,gemini-3.5-flash")
@@ -115,7 +117,7 @@ QUASI_TYPES = {"OCCUPATION", "LOCATION", "FACILITY", "AGE", "RELATION", "ORG", "
 COMBINATION_MIN = 3
 
 # Who the audit log records as making review decisions (no logins in this build).
-CLINICIAN = os.getenv("CLINICIAN", "Dr. A. Singh")
+CLINICIAN = os.getenv("CLINICIAN", "clinician")
 
 # ---------- Upload ----------
 # Port for `python app.py`. On a Mac, AirPlay Receiver also listens on 5000: 127.0.0.1:5000 still

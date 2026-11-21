@@ -28,13 +28,10 @@ type Props = {
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   onAddDocument: () => void;
   onReview: (doc: Doc) => void;
+  // False when no Gemini key is saved: sending is off and the panel points to Settings.
+  keySet: boolean;
+  onOpenSettings: () => void;
 };
-
-const PROMPTS = [
-  { label: "Referral letter", text: "Draft a referral letter to cardiology." },
-  { label: "Discharge summary", text: "Write a discharge summary." },
-  { label: "Handoff note", text: "Write a shift handoff note." },
-];
 
 // The clinician's message exactly as the backend sent it: the part of the outbound text after the
 // last "Request: " line. Null when there is no outbound text (e.g. blocked before it was built).
@@ -157,6 +154,8 @@ export default function ChatStep({
   setMessages,
   onAddDocument,
   onReview,
+  keySet,
+  onOpenSettings,
 }: Props) {
   const [draft, setDraft] = useState("");
   const [thinking, setThinking] = useState(false);
@@ -165,7 +164,7 @@ export default function ChatStep({
 
   const active = readyDocs.filter((d) => selectedIds.includes(d.id));
   const activeFlags = active.flatMap((d) => d.flags);
-  const canSend = active.length > 0 && !thinking;
+  const canSend = keySet && active.length > 0 && !thinking;
 
   useEffect(() => {
     // Braces matter: newer browsers return a Promise from smooth scrollIntoView, and an effect
@@ -301,13 +300,7 @@ export default function ChatStep({
 
       <section className="panel chat-panel">
         <div className="panel__head panel__head--wrap">
-          <div className="prompt-row">
-            {PROMPTS.map((p) => (
-              <button key={p.label} type="button" className="btn btn--sm" disabled={!canSend} onClick={() => send(p.text)}>
-                {p.label}
-              </button>
-            ))}
-          </div>
+          <h2>Chat</h2>
           <div className="toolbar__actions">
             <label className="checkbox">
               <input type="checkbox" checked={split} onChange={(e) => setSplit(e.target.checked)} />
@@ -323,13 +316,22 @@ export default function ChatStep({
           </div>
         )}
 
+        {!keySet && (
+          <p className="key-banner" role="status">
+            The chatbot needs a Gemini API key.{" "}
+            <button type="button" className="link-btn" onClick={onOpenSettings}>
+              Add a key in Settings
+            </button>
+          </p>
+        )}
+
         <div className="messages">
           {messages.length === 0 && (
             <div className="chat-empty">
               <p>
                 {active.length === 0
                   ? "Check at least one document to start."
-                  : "Ask for a referral letter, a discharge summary, or a handoff note."}
+                  : "Ask a question about the selected documents, or ask for a summary or a draft."}
               </p>
             </div>
           )}
@@ -416,8 +418,10 @@ export default function ChatStep({
             className="textarea"
             rows={1}
             value={draft}
-            disabled={active.length === 0}
-            placeholder={active.length ? "Ask a question or request a summary" : "Check a document first"}
+            disabled={!keySet || active.length === 0}
+            placeholder={
+              !keySet ? "Add a Gemini API key in Settings" : active.length ? "Ask a question or request a summary" : "Check a document first"
+            }
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {

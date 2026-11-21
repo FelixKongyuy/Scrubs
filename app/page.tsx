@@ -3,10 +3,12 @@
 import { useEffect, useState } from "react";
 import * as api from "../lib/api";
 import { ApiError, errorText } from "../lib/errors";
-import type { Doc, Flag, NewDocument } from "../lib/types";
+import type { Doc, Flag, NewDocument, Settings } from "../lib/types";
 import ChatStep, { type ChatMessage } from "./components/ChatStep";
+import KeySetup from "./components/KeySetup";
 import Loading from "./components/Loading";
 import ReviewStep from "./components/ReviewStep";
+import SettingsDialog from "./components/SettingsDialog";
 import Shell, { type Notice, type Step } from "./components/Shell";
 import UploadStep from "./components/UploadStep";
 
@@ -14,7 +16,7 @@ const SCAN_STEPS = ["Reading the document", "First pass: identifying details", "
 const FINALIZE_STEPS = ["Pseudonymizing", "Shifting dates", "Keeping the mapping in memory only"];
 
 const HEADINGS: Record<Step, [string, string]> = {
-  upload: ["Upload a patient document", ""],
+  upload: ["Upload a document", ""],
   review: ["Review redactions", ""],
   chat: ["Ask the chatbot", ""],
 };
@@ -30,6 +32,24 @@ export default function Home() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState<{ title: string; steps: string[] } | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
+  // Gemini key status. null = not loaded yet, or the backend couldn't be reached.
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [settingsChecked, setSettingsChecked] = useState(false);
+  const [skippedSetup, setSkippedSetup] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+
+  useEffect(() => {
+    api
+      .getSettings()
+      .then(setSettings)
+      .catch(() => setSettings(null))
+      .finally(() => setSettingsChecked(true));
+  }, []);
+
+  // Ask for the key at startup until one is saved (or the user skips for this session).
+  const needsSetup = settingsChecked && settings !== null && !settings.gemini_key_set && !skippedSetup;
+  // Unknown (backend unreachable) counts as set: the chat request then explains what's wrong.
+  const keySet = settings === null || settings.gemini_key_set;
 
   const setStep = (s: Step) => {
     setNotice(null);
@@ -122,7 +142,7 @@ export default function Home() {
     setStep("review");
   };
 
-  const [title, subtitle] = HEADINGS[step];
+  const [title, subtitle] = needsSetup ? ["Set up the chatbot", ""] : HEADINGS[step];
 
   return (
     <Shell
@@ -132,8 +152,15 @@ export default function Home() {
       title={title}
       subtitle={subtitle}
       alert={notice}
+      onOpenSettings={() => setShowSettings(true)}
+      hideSteps={needsSetup}
     >
-      {loading ? (
+      {showSettings && (
+        <SettingsDialog settings={settings} onChange={setSettings} onClose={() => setShowSettings(false)} />
+      )}
+      {needsSetup ? (
+        <KeySetup onSaved={setSettings} onSkip={() => setSkippedSetup(true)} />
+      ) : loading ? (
         <Loading title={loading.title} steps={loading.steps} />
       ) : step === "review" && current ? (
         <ReviewStep
@@ -153,6 +180,8 @@ export default function Home() {
           setMessages={setMessages}
           onAddDocument={() => setStep("upload")}
           onReview={openReview}
+          keySet={keySet}
+          onOpenSettings={() => setShowSettings(true)}
         />
       ) : (
         <UploadStep onScan={scan} error={scanError} />

@@ -1,11 +1,7 @@
 """
-Lexicon checks. No TiDB account or GLiNER download needed (both are faked).
+Lexicon checks. No GLiNER download needed (it is faked).
 Run from the backend folder:   python -m tests.test_lexicon
 """
-import os
-import sys
-import types
-
 import config
 from pipeline import detector, lexicon, merge
 
@@ -69,35 +65,6 @@ def test_priority_gliner_over_lexicon():
     assert out[0]["type"] == "OCCUPATION" and out[0]["found_by"] == ["gliner", "lexicon"]
 
 
-def test_tidb_path_with_fake_database():
-    """Exercise the real TiDB code path against a fake pymysql (no network)."""
-    sent_sql = []
-
-    class Cur:
-        def __enter__(self): return self
-        def __exit__(self, *a): pass
-        def execute(self, sql): sent_sql.append(sql)
-        def fetchall(self): return [("Tofino", "LOCATION", 0), ("bush pilot", "OCCUPATION", 0)]
-
-    class Conn:
-        def cursor(self): return Cur()
-        def close(self): pass
-
-    fake = types.SimpleNamespace(connect=lambda **kw: Conn())
-    sys.modules["pymysql"] = fake
-    os.environ.update(TIDB_HOST="fake.tidbcloud.com", TIDB_USER="x.gateway", TIDB_PASSWORD="pw")
-    try:
-        assert fresh("auto") == "tidb"
-        assert sent_sql == ["SELECT phrase, type, ambiguous FROM bc_lexicon"]   # the ONLY query, no note text
-        assert len(lexicon.find("bush pilot from Tofino")) == 2
-        # Unreachable database -> CSV fallback, pipeline keeps working
-        fake.connect = lambda **kw: (_ for _ in ()).throw(ConnectionError("down"))
-        assert fresh("auto") == "csv"
-    finally:
-        del sys.modules["pymysql"]
-        for k in ("TIDB_HOST", "TIDB_USER", "TIDB_PASSWORD"):
-            os.environ.pop(k, None)
-
 
 if __name__ == "__main__":
     test_csv_fallback_loads()
@@ -105,5 +72,4 @@ if __name__ == "__main__":
     test_ambiguous_needs_gliner()
     test_case_and_whole_words()
     test_priority_gliner_over_lexicon()
-    test_tidb_path_with_fake_database()
     print("all lexicon tests passed")

@@ -9,8 +9,8 @@ Nothing in `backend/` is changed for this. `launcher.py` imports `backend/app.py
 - `launcher.py` sets the environment, imports the Flask app, adds two routes that serve the static frontend, and starts it on a random port on `127.0.0.1`. It opens the page in a native window (pywebview, using Edge WebView2), or the default browser if that fails.
 - The frontend is a static export (`STATIC_EXPORT=1 npx next build` → `.next-export/`) with `NEXT_PUBLIC_API_URL=/`, so page and API share one origin and there is no CORS.
 - GLiNER is bundled as a self-contained folder (weights and tokenizer), so the app never contacts Hugging Face. `HF_HUB_OFFLINE=1` is forced.
-- The lexicon comes from the bundled `data/lexicon_seed.csv` (no TiDB). Snowflake auditing is off unless `SNOWFLAKE_*` is set.
-- The Gemini key is asked for on first launch and stored in Windows Credential Manager (service "Scrubs"). It is never in the installer or a file. To change it, delete the "Scrubs" entry in Credential Manager and restart.
+- The lexicon comes from the bundled `data/lexicon_seed.csv`. Snowflake auditing is off unless `SNOWFLAKE_*` is set.
+- The Gemini key is asked for on the app's first screen and stored in Windows Credential Manager (service "Scrubs"). It is never in the installer or a file. Settings (top right) replaces or removes it without a restart.
 - Nothing is written to disk at runtime: no log file, no document cache. Closing the window clears everything.
 
 ## Build
