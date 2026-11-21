@@ -812,6 +812,7 @@ p {
 .chat-side {
   display: grid;
   gap: var(--space-5);
+  min-width: 0;
 }
 .check-list {
   list-style: none;
@@ -835,9 +836,12 @@ p {
 }
 .check-item__body {
   flex: 1;
+  min-width: 0;
 }
 .check-item__title {
+  display: block;
   font-weight: 600;
+  overflow-wrap: anywhere;   /* long file names like Resume_Company_Role wrap instead of spilling out */
 }
 .check-item__meta {
   display: block;
@@ -1217,6 +1221,7 @@ p {
   margin-top: var(--space-3);
 }
 .thinking__slow {
+  flex-basis: 100%;
   display: block;
   margin-top: var(--space-1);
   font-weight: 400;
@@ -1224,4 +1229,34 @@ p {
 }
 .override-switch {
   margin: var(--space-2) 0 var(--space-1);
+}
+.badge {
+  white-space: nowrap;
+}
+.thinking {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-3);
+}
+.thinking__time {
+  font-weight: 400;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+.thinking__dots::after {
+  content: "";
+  display: inline-block;
+  width: 1.2em;
+  text-align: left;
+  animation: thinking-dots 1.2s steps(4, end) infinite;
+}
+@keyframes thinking-dots {
+  0% { content: ""; }
+  25% { content: "."; }
+  50% { content: ".."; }
+  75% { content: "..."; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .thinking__dots::after { animation: none; content: "..."; }
 }

@@ -33,6 +33,15 @@ type Props = {
   onOpenSettings: () => void;
 };
 
+// What the status line says while waiting for Gemini, one step every 3 seconds. The last one stays.
+const WAIT_STEPS = [
+  "Hiding your personal details",
+  "Sending the masked text to Gemini",
+  "Gemini is reading your document",
+  "Writing the answer",
+  "Still writing",
+];
+
 // The user's message exactly as the backend sent it: the part of the outbound text after the
 // last "Request: " line. Null when there is no outbound text (e.g. blocked before it was built).
 const REQUEST_MARK = "\n\nRequest: ";
@@ -159,16 +168,16 @@ export default function ChatStep({
 }: Props) {
   const [draft, setDraft] = useState("");
   const [thinking, setThinking] = useState(false);
-  const [slow, setSlow] = useState(false);
+  const [waited, setWaited] = useState(0);              // seconds since the message was sent
   const [split, setSplit] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
-  // After 15 seconds, say why it's taking a while, so a busy Gemini doesn't look like a frozen app.
+  // Count the seconds while waiting, so the status text changes and the app never looks frozen.
   useEffect(() => {
-    setSlow(false);
+    setWaited(0);
     if (!thinking) return;
-    const t = setTimeout(() => setSlow(true), 15_000);
-    return () => clearTimeout(t);
+    const t = setInterval(() => setWaited((s) => s + 1), 1000);
+    return () => clearInterval(t);
   }, [thinking]);
 
   const active = readyDocs.filter((d) => selectedIds.includes(d.id));
@@ -409,11 +418,15 @@ export default function ChatStep({
             ),
           )}
           {thinking && (
-            <p className="thinking">
-              Writing…
-              {slow && (
+            <p className="thinking" role="status" aria-live="polite">
+              <span>
+                {WAIT_STEPS[Math.min(Math.floor(waited / 3), WAIT_STEPS.length - 1)]}
+                <span className="thinking__dots" aria-hidden />
+              </span>
+              <span className="thinking__time">{waited}s</span>
+              {waited >= 15 && (
                 <span className="thinking__slow">
-                  Gemini is slow right now. Scrubs is trying another model and will stop after about a minute.
+                  Gemini is busy right now. Scrubs is trying another model and will stop after about a minute.
                 </span>
               )}
             </p>

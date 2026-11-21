@@ -133,17 +133,28 @@ def ask(tagged_note: str, history: list[dict], tagged_question: str) -> str:
         temperature=0.2,
         automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
     )
-    # Gemini often answers 503 "high demand" (or 429/500) for a while, and a call can hang. Retry
-    # each model a little, then fall back to the next model, so one busy or slow model doesn't fail
-    # the request. A model the key can't use (404) is skipped. Everything stops at the deadline.
+    # Gemini often answers 503 "high demand" (or 429) for a while, and a call can hang. So:
+    #   - start with the model that answered last time (busy models stay busy for a while),
+    #   - a busy model hands over to the next one straight away; each gets one more try after a
+    #     short wait once every model has been tried,
+    #   - a model that is slow (timeout, 504) or that this key can't use (404) is dropped,
+    #   - everything stops at the deadline.
     # Other errors (bad key, blocked request) raise right away. Every model gets the same
     # pseudonymized text; nothing else changes.
     global last_model
     deadline = time.monotonic() + TOTAL_DEADLINE_SECONDS
     models = _models_to_try()
+    if last_model in models:
+        models.remove(last_model)
+        models.insert(0, last_model)
+    dropped: set[str] = set()
     last_error: Exception | None = None
-    for model in models:
-        for attempt in range(RETRIES + 1):
+    for round_ in range(RETRIES + 1):
+        if round_:
+            time.sleep(RETRY_WAIT_SECONDS)
+        for model in models:
+            if model in dropped:
+                continue
             if time.monotonic() >= deadline:
                 raise Busy() from last_error
             try:
@@ -153,15 +164,11 @@ def ask(tagged_note: str, history: list[dict], tagged_question: str) -> str:
                 return response.text or ""
             except Exception as e:
                 code = getattr(e, "code", None)
-                if code in SKIP_CODES or _is_timeout(e):
-                    last_error = e
-                    break                                      # unusable or slow: next model now
-                if code not in RETRY_CODES:
+                if code in SKIP_CODES or code == 504 or _is_timeout(e):
+                    dropped.add(model)                         # unusable or slow: don't wait on it again
+                elif code not in RETRY_CODES:
                     raise
                 last_error = e
-                if attempt == RETRIES:
-                    break                                      # this model stays busy: try the next
-                time.sleep(RETRY_WAIT_SECONDS * (attempt + 1))
-    if last_error is not None and getattr(last_error, "code", None) not in SKIP_CODES and not _is_timeout(last_error):
+    if last_error is not None and getattr(last_error, "code", None) in RETRY_CODES - {504}:
         raise last_error                                       # every model busy: keep Google's code
     raise Busy() from last_error
