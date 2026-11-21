@@ -78,3 +78,6 @@ temp/
 # ---------- Desktop app build output ----------
 desktop/build/
 desktop/dist/
+
+# ---------- Local-only notes ----------
+CLAUDE.md
