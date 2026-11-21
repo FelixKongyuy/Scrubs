@@ -159,8 +159,17 @@ export default function ChatStep({
 }: Props) {
   const [draft, setDraft] = useState("");
   const [thinking, setThinking] = useState(false);
+  const [slow, setSlow] = useState(false);
   const [split, setSplit] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+
+  // After 15 seconds, say why it's taking a while, so a busy Gemini doesn't look like a frozen app.
+  useEffect(() => {
+    setSlow(false);
+    if (!thinking) return;
+    const t = setTimeout(() => setSlow(true), 15_000);
+    return () => clearTimeout(t);
+  }, [thinking]);
 
   const active = readyDocs.filter((d) => selectedIds.includes(d.id));
   const activeFlags = active.flatMap((d) => d.flags);
@@ -399,7 +408,16 @@ export default function ChatStep({
               </div>
             ),
           )}
-          {thinking && <p className="thinking">Writing…</p>}
+          {thinking && (
+            <p className="thinking">
+              Writing…
+              {slow && (
+                <span className="thinking__slow">
+                  Gemini is slow right now. Scrubs is trying another model and will stop after about a minute.
+                </span>
+              )}
+            </p>
+          )}
           <div ref={endRef} />
         </div>
 

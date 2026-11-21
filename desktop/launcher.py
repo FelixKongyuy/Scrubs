@@ -76,20 +76,35 @@ def save_key_to_credential_manager(key: str) -> None:
 SETTINGS_FILE = Path(os.getenv("LOCALAPPDATA") or Path.home()) / "Scrubs" / "settings.json"
 
 
-def load_never_mask() -> list[str]:
+def read_settings() -> dict:
     try:
-        words = json.loads(SETTINGS_FILE.read_text(encoding="utf-8")).get("never_mask", [])
-        return [w for w in words if isinstance(w, str)]
+        data = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
     except Exception:
-        return []                                     # no file yet, or unreadable: start empty
+        return {}                                     # no file yet, or unreadable: start fresh
+
+
+def write_setting(name: str, value) -> None:
+    """Update one preference and keep the others."""
+    data = read_settings()
+    data[name] = value
+    SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = SETTINGS_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    tmp.replace(SETTINGS_FILE)                         # never leaves a half-written file
+
+
+def load_never_mask() -> list[str]:
+    return [w for w in read_settings().get("never_mask", []) if isinstance(w, str)]
 
 
 def save_never_mask(words: list[str]) -> None:
     """Called by the backend's Settings endpoint with the full list."""
-    SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = SETTINGS_FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"never_mask": words}, indent=2), encoding="utf-8")
-    tmp.replace(SETTINGS_FILE)                         # never leaves a half-written file
+    write_setting("never_mask", words)
+
+
+def save_high_override(enabled: bool) -> None:
+    write_setting("allow_high_override", bool(enabled))
 
 
 def free_port() -> int:
@@ -128,6 +143,8 @@ def build_app():
         pass                                           # Settings still works, for this session only
     backend.config.NEVER_MASK = load_never_mask()
     backend.save_never_mask = save_never_mask
+    backend.config.ALLOW_HIGH_OVERRIDE = read_settings().get("allow_high_override") is True
+    backend.save_high_override = save_high_override
     flask_app = backend.app
 
     # The API routes (/documents, /chat, ...) are more specific, so Flask matches them first.

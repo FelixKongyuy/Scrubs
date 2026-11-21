@@ -512,18 +512,32 @@ def test_gemini_failure_is_a_clean_502():
     assert r.status_code == 502 and "network" not in r.json["detail"]
 
 
-class FlakyGenai:
-    """Fails with the given HTTP codes first, then answers. Records which model each call used."""
+class ReadTimeout(Exception):
+    """Named like httpx's timeout: no HTTP code, the call just took too long."""
 
-    def __init__(self, codes):
-        self.codes, self.models_used = list(codes), []
+
+class FlakyGenai:
+    """Fails with the given HTTP codes first (or "timeout"), then answers. Records which model each
+    call used. `available` fakes models.list(); None = listing fails, so the configured list is used."""
+
+    def __init__(self, codes, available=None):
+        self.codes, self.models_used, self.available = list(codes), [], available
         self.models = self
+
+    def list(self, config=None):
+        if self.available is None:
+            raise RuntimeError("listing not supported")
+        return [type("M", (), {"name": f"models/{n}", "supported_actions": ["generateContent"]})()
+                for n in self.available]
 
     def generate_content(self, model, contents, config):
         self.models_used.append(model)
         if self.codes:
+            code = self.codes.pop(0)
+            if code == "timeout":
+                raise ReadTimeout("took too long")
             err = Exception("gemini error")
-            err.code = self.codes.pop(0)
+            err.code = code
             raise err
         return type("R", (), {"text": "Recovered answer for [PERSON_01]."})()
 
@@ -543,10 +557,70 @@ def test_gemini_busy_errors_retry_then_fall_back():
         assert gc._client.models_used == ["main", "main", "backup1"] and gc.last_model == "backup1"
         gc._client = FlakyGenai([503] * 6)                   # everything busy: give up with the 503
         assert raises_with_code(gc, 503) and len(gc._client.models_used) == 6
-        gc._client = FlakyGenai([404])                       # wrong model or key: no retry, no fallback
-        assert raises_with_code(gc, 404) and gc._client.models_used == ["main"]
+        gc._client = FlakyGenai([404])                       # model this key can't use: skip to the next
+        gc.ask("note", [], "hi")
+        assert gc._client.models_used == ["main", "backup1"] and gc.last_model == "backup1"
+        gc._client = FlakyGenai([400])                       # bad key or request: no retry, no fallback
+        assert raises_with_code(gc, 400) and gc._client.models_used == ["main"]
     finally:
         gc._client, config.GEMINI_MODEL, config.GEMINI_FALLBACK_MODELS = old
+        gc._available = None
+
+
+def test_a_hanging_model_is_dropped_for_the_next():
+    import importlib
+    gc = importlib.reload(gemini_client)
+    gc.RETRY_WAIT_SECONDS = 0
+    old = (gc._client, config.GEMINI_MODEL, config.GEMINI_FALLBACK_MODELS)
+    config.GEMINI_MODEL, config.GEMINI_FALLBACK_MODELS = "main", ["backup1"]
+    try:
+        gc._client = FlakyGenai(["timeout"])                 # no retry of a slow model
+        assert gc.ask("note", [], "hi").startswith("Recovered")
+        assert gc._client.models_used == ["main", "backup1"]
+        gc._client = FlakyGenai(["timeout", "timeout"])      # everything slow: a clear Busy error
+        try:
+            gc.ask("note", [], "hi")
+            assert False, "expected Busy"
+        except gc.Busy:
+            pass
+        gc.TOTAL_DEADLINE_SECONDS = 0                         # past the deadline: stop at once
+        gc._client = FlakyGenai([])
+        try:
+            gc.ask("note", [], "hi")
+            assert False, "expected Busy"
+        except gc.Busy:
+            assert gc._client.models_used == []
+    finally:
+        gc._client, config.GEMINI_MODEL, config.GEMINI_FALLBACK_MODELS = old
+        importlib.reload(gemini_client)
+
+
+def test_only_models_this_key_can_use_are_tried():
+    import importlib
+    gc = importlib.reload(gemini_client)
+    old = (gc._client, config.GEMINI_MODEL, config.GEMINI_FALLBACK_MODELS)
+    config.GEMINI_MODEL, config.GEMINI_FALLBACK_MODELS = "main", ["backup1"]
+    try:
+        gc._client = FlakyGenai([], available=["backup1", "other-flash"])
+        gc.ask("note", [], "hi")
+        assert gc._client.models_used == ["backup1"]          # "main" doesn't exist for this key
+        gc._available = None
+        gc._client = FlakyGenai([], available=["gemini-9-flash", "gemini-9-flash-lite", "gemini-8-flash"])
+        gc.ask("note", [], "hi")
+        assert gc._client.models_used == ["gemini-9-flash"]   # none configured exist: newest flash
+    finally:
+        gc._client, config.GEMINI_MODEL, config.GEMINI_FALLBACK_MODELS = old
+        importlib.reload(gemini_client)
+
+
+def test_busy_gemini_gives_a_clear_message():
+    c = client()
+    doc = ready_doc(c)
+    def busy(*a):
+        raise gemini_client.Busy()
+    gemini_client.ask = busy
+    r = c.post("/chat", json={"document_ids": [doc["id"]], "message": "Summarize"})
+    assert r.status_code == 503 and "busy" in r.json["detail"]
 
 
 def raises_with_code(gc, code):
@@ -610,7 +684,8 @@ def test_settings_never_return_the_key():
     try:
         config.GEMINI_API_KEY = KEY
         r = c.get("/settings").json
-        assert r == {"gemini_key_set": True, "gemini_key_hint": "abcd", "key_storage": "memory", "never_mask": []}
+        assert r == {"gemini_key_set": True, "gemini_key_hint": "abcd", "key_storage": "memory", "never_mask": [],
+                     "allow_high_override": False}
         assert KEY not in str(r)
         config.GEMINI_API_KEY = ""
         assert c.get("/settings").json["gemini_key_set"] is False
@@ -775,6 +850,69 @@ def test_bad_never_mask_requests():
         assert store.saved == [] and config.NEVER_MASK == []
     finally:
         restore_never_mask()
+
+
+# ---------- HIGH override ----------
+
+def override_client():
+    c, store = settings_client()
+    app_module.save_high_override = store
+    return c, store
+
+
+def restore_override():
+    app_module.save_high_override = app_module._keep_in_memory_only
+    config.ALLOW_HIGH_OVERRIDE = False
+    restore_settings()
+
+
+def test_high_override_unlocks_high_items():
+    c, store = override_client()
+    try:
+        doc = new_doc(c)
+        name = flag(doc, "Margaret Ellison")
+        assert name["locked"] and c.patch(f"/documents/{doc['id']}/flags/{name['flag_code']}",
+                                          json={"masked": False}).status_code == 403
+        r = c.put("/settings/high-override", json={"enabled": True})
+        assert r.status_code == 200 and r.json["allow_high_override"] is True and store.saved == [True]
+        doc = c.get(f"/documents/{doc['id']}").json
+        name = flag(doc, "Margaret Ellison")
+        assert name["locked"] is False and name["masked"] is True          # still masked by default
+        r = c.patch(f"/documents/{doc['id']}/flags/{name['flag_code']}", json={"masked": False})
+        assert r.status_code == 200 and flag(r.json, "Margaret Ellison")["masked"] is False
+        # New scans start unlocked too, but masked.
+        fresh = flag(new_doc(c), "Margaret Ellison")
+        assert fresh["locked"] is False and fresh["masked"] is True
+    finally:
+        restore_override()
+
+
+def test_turning_override_off_masks_and_relocks():
+    c, _ = override_client()
+    try:
+        c.put("/settings/high-override", json={"enabled": True})
+        doc = new_doc(c)
+        name = flag(doc, "Margaret Ellison")
+        c.patch(f"/documents/{doc['id']}/flags/{name['flag_code']}", json={"masked": False})
+        c.post(f"/documents/{doc['id']}/finalize")
+        r = c.put("/settings/high-override", json={"enabled": False})
+        assert r.status_code == 200 and r.json["documents_updated"] >= 1
+        doc = c.get(f"/documents/{doc['id']}").json
+        name = flag(doc, "Margaret Ellison")
+        assert name["locked"] is True and name["masked"] is True
+        assert doc["status"] == "needs_review"
+    finally:
+        restore_override()
+
+
+def test_bad_high_override_requests():
+    c, store = override_client()
+    try:
+        for body in (None, {}, {"enabled": "yes"}, {"enabled": 1}):
+            assert c.put("/settings/high-override", json=body).status_code == 400, body
+        assert store.saved == [] and config.ALLOW_HIGH_OVERRIDE is False
+    finally:
+        restore_override()
 
 
 # ---------- misc ----------

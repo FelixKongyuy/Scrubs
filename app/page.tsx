@@ -189,6 +189,7 @@ export default function Home() {
           onBack={() => setStep("upload")}
           onDone={finish}
           onNeverMask={neverMask}
+          highOverride={settings?.allow_high_override ?? false}
         />
       ) : step === "chat" ? (
         <ChatStep

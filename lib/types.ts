@@ -47,6 +47,8 @@ export type Settings = {
   key_storage: "credential_manager" | "memory" | "demo";
   // Words and phrases the user told Scrubs never to mask (exact match, any case).
   never_mask: string[];
+  // On: HIGH items start masked but can be unmasked in Review. Off (default): always masked.
+  allow_high_override: boolean;
   // Only on PUT /settings/gemini-key: false when Google couldn't be reached to check the key.
   verified?: boolean;
   // Only on PUT /settings/never-mask: how many open documents changed and need another review.

@@ -1216,3 +1216,12 @@ p {
 .tier-legend + .muted {
   margin-top: var(--space-3);
 }
+.thinking__slow {
+  display: block;
+  margin-top: var(--space-1);
+  font-weight: 400;
+  font-size: var(--text-sm);
+}
+.override-switch {
+  margin: var(--space-2) 0 var(--space-1);
+}

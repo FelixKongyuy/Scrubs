@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { removeGeminiKey, saveNeverMask } from "../../lib/api";
+import { removeGeminiKey, saveHighOverride, saveNeverMask } from "../../lib/api";
 import { errorText } from "../../lib/errors";
 import type { Settings } from "../../lib/types";
 import ApiKeyForm from "./ApiKeyForm";
@@ -16,6 +16,75 @@ type Props = {
 
 const updatedText = (n: number | undefined) =>
   n ? ` ${n} open document${n === 1 ? " was" : "s were"} updated: review ${n === 1 ? "it" : "them"} again before chatting.` : "";
+
+// Off (default): HIGH items (names, ID numbers, addresses...) are always masked and locked.
+// On: they still start masked, but each one can be unmasked in Review like a MED item.
+function HighOverrideSwitch({
+  enabled,
+  onSaved,
+}: {
+  enabled: boolean;
+  onSaved: (settings: Settings, message: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const toggle = async () => {
+    const next = !enabled;
+    if (
+      next &&
+      !window.confirm(
+        "Let me unmask HIGH items?\n\nNames, ID numbers, addresses and other HIGH items will still be masked to start, " +
+          "but you'll be able to unmask them in Review. Anything you unmask is sent to the chatbot as written.",
+      )
+    )
+      return;
+    setBusy(true);
+    setError(null);
+    try {
+      const s = await saveHighOverride(next);
+      onSaved(
+        s,
+        (next
+          ? "HIGH items can now be unmasked in Review."
+          : "HIGH items are locked again and always masked.") + updatedText(s.documents_updated),
+      );
+    } catch (err) {
+      setError(errorText(err, "The setting couldn't be saved."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <h3 className="side-h">HIGH items</h3>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={enabled}
+        className="switch override-switch"
+        disabled={busy}
+        onClick={toggle}
+      >
+        <span className="switch__track">
+          <span className="switch__thumb" />
+        </span>
+        <span className="switch__label">Let me unmask HIGH items</span>
+      </button>
+      <p className="muted">
+        {enabled
+          ? "On. HIGH items start masked, but you can unmask each one in Review. Turn this off to lock them again."
+          : "Off. Names, ID numbers, addresses, phone numbers and emails are always masked."}
+      </p>
+      {error && (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      )}
+    </>
+  );
+}
 
 // Words Scrubs flagged by mistake (course names, acronyms, product names). They are never masked,
 // in any tier, so they reach the chatbot as written.
@@ -202,6 +271,16 @@ export default function SettingsDialog({ settings, onChange, onDocumentsChanged,
                 </button>
               </div>
             )}
+
+            <HighOverrideSwitch
+              enabled={settings.allow_high_override}
+              onSaved={(s, message) => {
+                onChange(s);
+                onDocumentsChanged();
+                setError(null);
+                setNote(message);
+              }}
+            />
 
             <NeverMaskList
               words={settings.never_mask}

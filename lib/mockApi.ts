@@ -42,7 +42,9 @@ export async function getDocument(id: string): Promise<Doc> {
 // POST /documents
 export async function createDocument(input: NewDocument): Promise<Doc> {
   if (input.kind === "pdf") throw new Error("PDF upload needs the backend. In this demo, paste the note text instead.");
-  const flags = detect(input.text).filter((f) => !isNeverMask(f.text));
+  const flags = detect(input.text)
+    .filter((f) => !isNeverMask(f.text))
+    .map((f) => ({ ...f, locked: f.tier === "high" && !demoSettings.allow_high_override }));
   const doc = makeDoc(`doc-${Date.now()}`, input.title.trim() || "Pasted note", "paste", input.text, new Date(), flags);
   store = [doc, ...db()];
   return copy(doc);
@@ -105,7 +107,31 @@ export async function chat(documentIds: string[], message: string): Promise<Chat
 }
 
 // The demo's chatbot is canned, so it starts with a key "set" and never needs a real one.
-let demoSettings: Settings = { gemini_key_set: true, gemini_key_hint: null, key_storage: "demo", never_mask: [] };
+let demoSettings: Settings = {
+  gemini_key_set: true,
+  gemini_key_hint: null,
+  key_storage: "demo",
+  never_mask: [],
+  allow_high_override: false,
+};
+
+// PUT /settings/high-override. Same rules as the backend: unlock HIGH flags, or mask and relock them.
+export async function saveHighOverride(enabled: boolean): Promise<Settings> {
+  demoSettings = { ...demoSettings, allow_high_override: enabled };
+  let changed = 0;
+  store = db().map((d) => {
+    let touched = false;
+    const flags = d.flags.map((f) => {
+      if (f.tier !== "high") return f;
+      if (!enabled && !f.masked) touched = true;
+      return { ...f, locked: !enabled, masked: enabled ? f.masked : true };
+    });
+    if (!touched) return { ...d, flags };
+    changed++;
+    return { ...d, flags, status: "needs_review", pseudonymized_text: null };
+  });
+  return { ...demoSettings, documents_updated: changed };
+}
 
 const normalizePhrase = (w: string) => w.replace(/\s+/g, " ").trim().replace(/^[.,;:!?"'()[\]]+|[.,;:!?"'()[\]]+$/g, "").toLowerCase();
 const isNeverMask = (text: string) => demoSettings.never_mask.some((w) => normalizePhrase(w) === normalizePhrase(text));

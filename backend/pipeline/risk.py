@@ -1,7 +1,8 @@
 """
 Tiers, labels and reasons (CLAUDE.md section 6). Plain rules, no AI, so every decision is explainable.
 
-- HIGH (names, PHN, MRN, address, phone, email): masked and locked.
+- HIGH (names, PHN, MRN, address, phone, email): masked and locked, unless the user turned on
+  the HIGH override in Settings (then masked by default but can be unmasked).
 - MED (dates, towns, roles, family details...): masked, the user can unmask.
 - LOW (drugs, doses, diagnoses, lab values): kept, the user can mask.
 - Quasi-identifiers are harmless alone, but 3+ different kinds in one note ("74" + "Tofino" +
@@ -81,7 +82,7 @@ def to_flags(text: str, spans: list[dict]) -> list[dict]:
             "tier": tier,
             "reason": reason,
             "masked": tier != "low",
-            "locked": tier == "high",
+            "locked": tier == "high" and not config.ALLOW_HIGH_OVERRIDE,
             "source": SOURCE[s["source"]],
             "type": t,
             "found_by": s["found_by"],

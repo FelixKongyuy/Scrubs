@@ -15,6 +15,8 @@ type Props = {
   onDone: () => void;
   // Adds a wrongly flagged word to the never-mask list in Settings (the only way past a HIGH lock).
   onNeverMask: (text: string) => void;
+  // Settings > "Let me unmask HIGH items" is on: HIGH items can be toggled like any other.
+  highOverride: boolean;
 };
 
 const tooltip = (f: Flag) =>
@@ -25,7 +27,16 @@ const spanId = (f: Flag) => `span-${f.flag_code}`;
 const rowId = (f: Flag) => `row-${f.flag_code}`;
 const reveal = (id: string) => document.getElementById(id)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
 
-export default function ReviewStep({ doc, onSetMasked, onSetMany, onReset, onBack, onDone, onNeverMask }: Props) {
+export default function ReviewStep({
+  doc,
+  onSetMasked,
+  onSetMany,
+  onReset,
+  onBack,
+  onDone,
+  onNeverMask,
+  highOverride,
+}: Props) {
   const [showAI, setShowAI] = useState(false);
   const [filter, setFilter] = useState<Tier | "all">("all");
   const [selected, setSelected] = useState<string | null>(null);
@@ -139,7 +150,7 @@ export default function ReviewStep({ doc, onSetMasked, onSetMany, onReset, onBac
             <span>Click a highlighted item to mask or keep it. Solid highlight = masked, dashed outline = kept.</span>
             <span className="legend">
               <span className="legend__item">
-                <TierTag tier="high" /> always masked
+                <TierTag tier="high" /> {highOverride ? "masked by default (unlock is on)" : "always masked"}
               </span>
               <span className="legend__item">
                 <TierTag tier="med" /> masked by default
@@ -169,7 +180,7 @@ export default function ReviewStep({ doc, onSetMasked, onSetMany, onReset, onBac
 
           <div className="bulk">
             <span>Mask all:</span>
-            {(["med", "low"] as const).map((tier) => {
+            {(highOverride ? (["high", "med", "low"] as const) : (["med", "low"] as const)).map((tier) => {
               const editable = doc.flags.filter((f) => f.tier === tier && !f.locked);
               const on = editable.length > 0 && editable.every((f) => f.masked);
               return (

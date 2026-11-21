@@ -107,6 +107,10 @@ NEVER_REDACT |= COMMON_ACRONYMS
 # whole flag, ignoring case. Filled at startup by the desktop app; empty when run from source.
 NEVER_MASK: list[str] = []
 
+# Settings > "Let me unmask HIGH items". Off: HIGH items (names, ID numbers...) are always masked
+# and locked. On: they start masked but the user can unmask them in Review, like MED items.
+ALLOW_HIGH_OVERRIDE = False
+
 # ---------- Tiers, labels, pseudonyms (CLAUDE.md sections 6 and 8) ----------
 # Internal type -> (label the frontend shows, tier, pseudonym prefix).
 # HIGH = always masked and locked. MED = masked, can unmask. LOW = kept, can mask.

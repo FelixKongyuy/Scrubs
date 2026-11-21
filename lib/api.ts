@@ -191,6 +191,11 @@ const real = {
   async saveNeverMask(words: string[]): Promise<Settings> {
     return normalizeSettings(await request<any>("/settings/never-mask", json("PUT", { words })));
   },
+
+  // PUT /settings/high-override. Turning it off masks and locks HIGH items again everywhere.
+  async saveHighOverride(enabled: boolean): Promise<Settings> {
+    return normalizeSettings(await request<any>("/settings/high-override", json("PUT", { enabled })));
+  },
 };
 
 function normalizeSettings(s: any): Settings {
@@ -199,6 +204,7 @@ function normalizeSettings(s: any): Settings {
     gemini_key_hint: typeof s?.gemini_key_hint === "string" ? s.gemini_key_hint : null,
     key_storage: s?.key_storage === "credential_manager" ? "credential_manager" : "memory",
     never_mask: Array.isArray(s?.never_mask) ? s.never_mask.filter((w: unknown) => typeof w === "string") : [],
+    allow_high_override: s?.allow_high_override === true,
     verified: typeof s?.verified === "boolean" ? s.verified : undefined,
     documents_updated: typeof s?.documents_updated === "number" ? s.documents_updated : undefined,
   };
@@ -217,6 +223,7 @@ export const getSettings = () => impl.getSettings();
 export const saveGeminiKey = (key: string) => impl.saveGeminiKey(key);
 export const removeGeminiKey = () => impl.removeGeminiKey();
 export const saveNeverMask = (words: string[]) => impl.saveNeverMask(words);
+export const saveHighOverride = (enabled: boolean) => impl.saveHighOverride(enabled);
 
 // Where people get a key. Opened in the system browser by the desktop app.
 export const GEMINI_KEY_URL = "https://aistudio.google.com/apikey";

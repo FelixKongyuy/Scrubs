@@ -17,6 +17,7 @@ Endpoints
   PUT    /settings/gemini-key               {key} -> Settings + verified   (400 if Google rejects it)
   DELETE /settings/gemini-key               -> Settings
   PUT    /settings/never-mask               {words: [...]} -> Settings + documents_updated
+  PUT    /settings/high-override            {enabled} -> Settings + documents_updated
 
 Errors are JSON {"detail": "message safe to show the user"}.
 
@@ -145,6 +146,7 @@ save_gemini_key = _keep_in_memory_only     # called with "" to remove the saved 
 KEY_STORAGE = "memory"                     # "memory" | "credential_manager", shown in Settings
 # The never-mask list is saved the same way: the desktop app writes it to a settings file.
 save_never_mask = _keep_in_memory_only     # called with the full list (list[str])
+save_high_override = _keep_in_memory_only  # called with True / False
 
 MAX_NEVER_MASK = 300                       # entries
 MAX_NEVER_MASK_CHARS = 100                 # per entry
@@ -153,7 +155,8 @@ MAX_NEVER_MASK_CHARS = 100                 # per entry
 def settings_body() -> dict:
     key = config.GEMINI_API_KEY
     return {"gemini_key_set": bool(key), "gemini_key_hint": key[-4:] if len(key) >= 8 else None,
-            "key_storage": KEY_STORAGE, "never_mask": list(config.NEVER_MASK)}
+            "key_storage": KEY_STORAGE, "never_mask": list(config.NEVER_MASK),
+            "allow_high_override": config.ALLOW_HIGH_OVERRIDE}
 
 
 def apply_never_mask() -> int:
@@ -215,6 +218,44 @@ def delete_gemini_key():
     gemini_client.set_key("")
     log.info("settings: Gemini key removed")
     return jsonify(settings_body())
+
+
+def apply_high_override() -> int:
+    """
+    Unlock or relock HIGH flags in every open document to match the setting. Turning it OFF also
+    masks again any HIGH item that was unmasked, and that document must be reviewed again.
+    Returns how many documents changed.
+    """
+    changed = 0
+    for doc in DOCS.values():
+        touched = False
+        for f in doc["flags"]:
+            if f["tier"] != "high":
+                continue
+            f["locked"] = not config.ALLOW_HIGH_OVERRIDE
+            if f["locked"] and not f["masked"]:
+                f["masked"] = True
+                touched = True
+        if touched:
+            doc["status"], doc["pseudonymized_text"] = "needs_review", None
+            changed += 1
+    return changed
+
+
+@app.put("/settings/high-override")
+def put_high_override():
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or not isinstance(body.get("enabled"), bool):
+        return error("Send JSON {\"enabled\": true} or {\"enabled\": false}.", 400)
+    try:
+        save_high_override(body["enabled"])
+    except Exception as e:
+        log.info("settings: HIGH override not saved (%s)", type(e).__name__)
+        return error("The setting couldn't be saved on this computer. Try again.", 500)
+    config.ALLOW_HIGH_OVERRIDE = body["enabled"]
+    changed = apply_high_override()
+    log.info("settings: HIGH override %s, %d documents updated", "on" if body["enabled"] else "off", changed)
+    return jsonify(settings_body() | {"documents_updated": changed})
 
 
 @app.put("/settings/never-mask")
@@ -329,7 +370,7 @@ def set_flag(doc_id, flag_code):
     if not isinstance(body, dict) or not isinstance(body.get("masked"), bool):
         return error("Send JSON {\"masked\": true} or {\"masked\": false}.", 400)
     if flag["locked"]:                                    # enforced here, not just in the UI
-        return error("HIGH items are always masked.", 403)
+        return error("HIGH items are always masked. To change that, turn on \"Let me unmask HIGH items\" in Settings.", 403)
 
     flag["masked"] = body["masked"]
     doc["status"], doc["pseudonymized_text"] = "needs_review", None    # must be finalized again
@@ -416,7 +457,11 @@ def chat():
     try:
         answer = gemini_client.ask(note, [], safe_message)
     except Exception as e:
-        log.info("chat: Gemini error (%s)", type(e).__name__)
+        log.info("chat: Gemini error (%s, code=%s)", type(e).__name__, getattr(e, "code", None))
+        if isinstance(e, gemini_client.Busy) or getattr(e, "code", None) in gemini_client.RETRY_CODES:
+            return error("Gemini is busy or can't be reached right now. Wait a minute, then try again.", 503)
+        if getattr(e, "code", None) in (400, 401, 403):
+            return error("Gemini refused the request. Check your API key in Settings.", 502)
         return error("Gemini request failed. Try again.", 502)
 
     call_audit("log_outbound", document_ids=ids, word_count=word_count(outbound_text),
