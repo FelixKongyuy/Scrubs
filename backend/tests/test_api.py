@@ -23,7 +23,7 @@ DOC_KEYS = {"id", "title", "source", "original_text", "pseudonymized_text", "sta
 FLAG_KEYS = {"flag_code", "start_idx", "end_idx", "text", "label", "tier", "reason", "masked", "locked",
              "pseudonym", "source"}
 CHAT_KEYS = {"answer_with_pseudonyms", "outbound_text", "identifier_count"}
-LABELS = {"Person", "PHN", "MRN", "License", "Address", "Phone", "Email", "SIN", "Card number", "Bank account",
+LABELS = {"Person", "PHN", "MRN", "License", "Address", "Phone", "Email", "SIN", "Card number", "Bank account", "Organization",
           "Date", "Age", "Location description",
           "Unique role", "Family detail", "Employer", "Person description", "Drug", "Dose", "Diagnosis", "Lab value"}
 
@@ -807,6 +807,22 @@ def test_acronyms_are_not_names():
     c = client()
     doc = new_doc(c, text="Course list: VHDL, FPGA, MATLAB and SQL. Ask the CRA about RRSP and OAS.")
     assert doc["flags"] == [], [f["text"] for f in doc["flags"]]
+
+
+def test_organizations_and_products_are_not_names():
+    c = client()
+    text = ("Second-Year Computer Engineering Student, Simon Fraser University\n"
+            "Graduated from the University of Victoria. Volunteer at Lions Gate Hospital.\n"
+            "Tools: Jira, Confluence, Java, Gemini API.\n"
+            "ShowTime Exotics | Luxury Car Rental Website\n"
+            "Reference: Dr. Raj Patel.")
+    doc = new_doc(c, text=text)
+    found = {f["text"]: f for f in doc["flags"]}
+    assert found["Simon Fraser University"]["label"] == "Organization"
+    assert found["Simon Fraser University"]["tier"] == "med" and not found["Simon Fraser University"]["locked"]
+    for word in ("Jira", "Confluence", "Java", "Gemini API", "Luxury Car Rental Website"):
+        assert all(word not in t for t in found), (word, list(found))
+    assert found["Dr. Raj Patel"]["label"] == "Person"                  # real names still caught
 
 
 def test_sin_card_and_bank_numbers_are_locked_high():

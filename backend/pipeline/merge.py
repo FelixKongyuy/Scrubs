@@ -10,10 +10,45 @@ import config
 
 
 def _is_medical_term(span_text: str) -> bool:
-    # "Parkinson's" / "Foley" etc. look like names to a model, but they're clinical terms.
+    # "Parkinson's" / "Foley" etc. look like names to a model, but they're clinical terms. The same
+    # list holds abbreviations and tech terms, so "Gemini API" (every word on it) is dropped too.
     # Word processors and PDFs write a curly apostrophe (Bell’s); treat it like a straight one.
-    words = re.findall(r"[\w']+", span_text.lower().replace("’", "'"))
-    return len(words) == 1 and words[0] in config.NEVER_REDACT
+    words = re.findall(r"[\w'.]+", span_text.lower().replace("’", "'"))
+    words = [w.strip(".") for w in words if w.strip(".")]
+    return bool(words) and all(w in config.NEVER_REDACT for w in words)
+
+
+_WORD = re.compile(r"[A-Za-z][\w'’.-]*")
+_BULLETS = set("•▪●◦‣∙·*|")
+
+
+def _check_name_guess(text: str, span: dict) -> dict | None:
+    """
+    spaCy's PERSON is a guess from capital letters, so on resumes, forms and letters it often lands
+    on organizations, products and headings. Returns the span to keep, a corrected one, or None.
+      - next to an organization word ("Simon Fraser University", "University of Victoria"):
+        widen it and make it an Organization (MED), not a locked name
+      - a bullet, a digit or a word no name contains ("Website", "Project"): not a name, drop it
+    Only Presidio's guesses are checked. GLiNER reads context, so its names are trusted.
+    """
+    if span["source"] != "rules" or span["type"] != "PERSON":
+        return span
+    found = text[span["start"]:span["end"]]
+    after = re.match(r"[ \t]+([A-Za-z.]+)", text[span["end"]:span["end"] + 40])
+    if after and after.group(1).lower().strip(".") in config.ORG_WORDS:
+        end = span["end"] + after.end()
+        # "Simon Fraser University of Technology": keep the whole name
+        tail = re.match(r"[ \t]+of[ \t]+((?:[A-Z][\w'’-]*[ \t]?)+)", text[end:end + 60])
+        if tail:
+            end += len(tail.group(0).rstrip())
+        return {**span, "end": end, "type": "ORGNAME"}
+    before = re.search(r"([A-Za-z]+)[ \t]+of[ \t]+(?:the[ \t]+)?$", text[max(0, span["start"] - 40):span["start"]])
+    if before and before.group(1).lower() in config.ORG_WORDS:
+        return {**span, "start": span["start"] - len(before.group(0)), "type": "ORGNAME"}
+    words = [w.lower().strip(".") for w in _WORD.findall(found)]
+    if any(ch in _BULLETS or ch.isdigit() for ch in found) or any(w in config.NOT_NAME_WORDS for w in words):
+        return None
+    return span
 
 
 def normalize_phrase(value: str) -> str:
@@ -81,6 +116,7 @@ def merge(text: str, rule_spans: list[dict], model_spans: list[dict],
                      if not l.get("ambiguous") or any(_overlaps(l, g) for g in model_spans)]
 
     never = never_mask_set()
+    rule_spans = [c for c in (_check_name_guess(text, s) for s in rule_spans) if c is not None]
     spans = [s for s in rule_spans + model_spans + lexicon_spans
              if not _is_medical_term(text[s["start"]:s["end"]])
              and not is_never_mask(text[s["start"]:s["end"]], never)]

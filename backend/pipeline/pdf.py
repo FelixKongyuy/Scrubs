@@ -46,10 +46,19 @@ _GRID_QUANTILE = 0.9
 _INDENT = re.compile(r"^ +(?=\S)")
 
 
+# pdfminer writes "(cid:136)" for a glyph it can't map to a character. In practice these are
+# symbol-font bullets ("(cid:136) Documentation: ..."), so they become "•", and one in the middle
+# of a line starts a new item, the way the bullet did on the page.
+_CID_LINE_START = re.compile(r"^([ \t]*)\(cid:\d+\)[ \t]*", re.MULTILINE)
+_CID_INLINE = re.compile(r"[ \t]*\(cid:\d+\)[ \t]*")
+
+
 def _fix_chars(text: str) -> str:
     for bad, good in _CHAR_FIXES.items():
         text = text.replace(bad, good)
-    return text.replace("\r\n", "\n").replace("\r", "\n")
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = _CID_LINE_START.sub(r"\1• ", text)
+    return _CID_INLINE.sub("\n• ", text)
 
 
 def _page_text(page) -> str:

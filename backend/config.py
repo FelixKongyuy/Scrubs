@@ -103,6 +103,44 @@ COMMON_ACRONYMS = {
 }
 NEVER_REDACT |= COMMON_ACRONYMS
 
+# Tools, languages and products that spaCy guesses are people ("Jira", "Java", "Gemini API").
+# A name guess made ONLY of these words (and the acronyms above) is dropped. Lowercase.
+TECH_TERMS = {
+    "jira", "confluence", "slack", "notion", "trello", "asana", "figma", "canva", "zoom", "teams",
+    "github", "gitlab", "bitbucket", "git", "docker", "kubernetes", "aws", "azure", "gcp",
+    "java", "javascript", "typescript", "python", "kotlin", "swift", "rust", "golang", "ruby",
+    "php", "perl", "scala", "haskell", "react", "angular", "vue", "svelte", "node", "nodejs",
+    "next.js", "nextjs", "vite", "tailwind", "bootstrap", "flask", "fastapi", "django", "spring",
+    "supabase", "firebase", "postgresql", "postgres", "mysql", "mongodb", "redis", "sqlite",
+    "maven", "gradle", "junit", "mockito", "jacoco", "pytest", "libgdx", "unity", "unreal",
+    "arduino", "raspberry", "platformio", "emailjs", "vercel", "netlify", "heroku",
+    "gemini", "claude", "chatgpt", "openai", "copilot", "presidio", "gliner", "spacy",
+    "excel", "powerpoint", "outlook", "onedrive", "sharepoint", "google", "microsoft", "apple",
+    "android", "ios", "windows", "macos", "ubuntu",
+}
+NEVER_REDACT |= TECH_TERMS
+
+# Words that make a spaCy name guess an ORGANIZATION when they come right after it ("Simon Fraser
+# University", "Lions Gate Hospital") or right before "of" ("University of Victoria"). Lowercase.
+ORG_WORDS = {
+    "university", "college", "institute", "polytechnic", "school", "academy", "seminary",
+    "hospital", "clinic", "centre", "center", "society", "foundation", "association", "council",
+    "bank", "credit", "union", "trust", "company", "corporation", "corp", "inc", "ltd", "llc",
+    "limited", "group", "partners", "ministry", "department", "agency", "authority", "board",
+    "church", "museum", "library",
+}
+
+# Words that never appear in a person's name. A name guess containing one of them is dropped
+# ("Luxury Car Rental Website", "Gemini API Project"). Lowercase.
+NOT_NAME_WORDS = ORG_WORDS | {
+    "website", "site", "app", "application", "system", "systems", "dashboard", "tool", "tools",
+    "platform", "service", "services", "program", "programme", "project", "projects", "team",
+    "teams", "course", "courses", "design", "engineering", "software", "hardware", "solutions",
+    "technologies", "technology", "studio", "labs", "lab", "rental", "rentals", "store", "shop",
+    "restaurant", "cafe", "hotel", "club", "game", "games", "report", "form", "account",
+    "invoice", "statement", "policy", "plan", "guide", "manual", "automated", "automation",
+}
+
 # Words and phrases the user told Scrubs never to mask (Settings > Never mask). Matched as a
 # whole flag, ignoring case. Filled at startup by the desktop app; empty when run from source.
 NEVER_MASK: list[str] = []
@@ -134,6 +172,7 @@ TYPES = {
     "OCCUPATION": ("Unique role", "med", "ROLE"),
     "RELATION":   ("Family detail", "med", "FAMILY"),
     "ORG":        ("Employer", "med", "EMPLOYER"),
+    "ORGNAME":    ("Organization", "med", "ORG"),
     "DESC":       ("Person description", "med", "DESC"),
     "DRUG":       ("Drug", "low", "DRUG"),
     "DOSE":       ("Dose", "low", "DOSE"),
@@ -142,7 +181,7 @@ TYPES = {
 }
 
 # Quasi-identifiers: harmless alone, identifying in combination ("74" + "Tofino" + "retired pilot").
-QUASI_TYPES = {"OCCUPATION", "LOCATION", "FACILITY", "AGE", "RELATION", "ORG", "DESC"}
+QUASI_TYPES = {"OCCUPATION", "LOCATION", "FACILITY", "AGE", "RELATION", "ORG", "ORGNAME", "DESC"}
 # How many DIFFERENT quasi kinds in one note before their reasons say "N details combined".
 COMBINATION_MIN = 3
 

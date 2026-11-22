@@ -100,6 +100,11 @@ def test_clean_text_fixes_ligatures_and_odd_spaces():
     assert clean_text(["atrial ﬁbrillation noted"]) == "atrial fibrillation noted"
 
 
+def test_unmapped_glyph_bullets_become_bullets():
+    page = "(cid:136) Documentation: guides (cid:136) Microsoft 365: Excel\n(cid:136) AI: Python"
+    assert clean_text([page]) == "• Documentation: guides\n• Microsoft 365: Excel\n• AI: Python"
+
+
 def test_flask_upload():
     config.USE_GLINER = True
     detector._model = NoGLiNER()
@@ -127,5 +132,6 @@ if __name__ == "__main__":
     test_scanned_and_bad_files()
     test_clean_text_keeps_list_items_and_labels_on_their_own_lines()
     test_clean_text_fixes_ligatures_and_odd_spaces()
+    test_unmapped_glyph_bullets_become_bullets()
     test_flask_upload()
     print("all pdf tests passed")

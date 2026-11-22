@@ -35,6 +35,7 @@ REASONS = {
     "OCCUPATION": "Role that can single out a person",
     "RELATION": "Family member or detail",
     "ORG": "Names an employer",
+    "ORGNAME": "Names a school, company or other organization",
     "DESC": "Describes the person",
     "DRUG": "Medical term, kept by default",
     "DOSE": "Medical term, kept by default",
@@ -44,7 +45,7 @@ REASONS = {
 
 # Plain words for the "N details combined" reason.
 KIND_WORDS = {"OCCUPATION": "role", "LOCATION": "town", "FACILITY": "facility", "AGE": "age",
-              "RELATION": "family", "ORG": "employer", "DESC": "description"}
+              "RELATION": "family", "ORG": "employer", "ORGNAME": "organization", "DESC": "description"}
 
 _DOCTOR_BEFORE = re.compile(r"\b(dr|doctor)\.?\s*$", re.IGNORECASE)
 _DOCTOR_START = re.compile(r"^(dr|doctor)\.?\s", re.IGNORECASE)
