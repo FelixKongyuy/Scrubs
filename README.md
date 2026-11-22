@@ -6,6 +6,54 @@ You upload a PDF or paste the text. Scrubs flags the personal details (names, he
 
 We built it at StormHacks 2026 (Armin, Felix, Krish and Nathan) as a tool for clinicians. This fork is for anyone handling their own personal or medical documents.
 
+## Get started (Windows)
+
+Setting up takes about 10 minutes. You need a Windows computer, an internet connection and a Google account.
+
+### Step 1: Download and install Scrubs
+
+1. Download the installer: **[Scrubs-0.1.0.msi](https://github.com/FelixKongyuy/Scrubs/releases/latest/download/Scrubs-0.1.0.msi)** (about 930 MB). It's a big file, so it can take a few minutes.
+2. Open the file you downloaded. It's usually in your **Downloads** folder.
+3. Windows may show a blue box that says **"Windows protected your PC"**. This appears for small free apps that aren't registered with Microsoft. Click **More info**, then **Run anyway**.
+4. Click **Next** on each screen, keep the suggested folder, then click **Install**. If Windows asks *"Do you want to allow this app to make changes?"*, click **Yes**.
+5. When it finishes, leave **Open Scrubs** ticked and click **Finish**.
+
+The first time, Scrubs shows "Starting Scrubs" for up to a minute while it gets ready. After that, open it from the Start menu like any other app.
+
+![Installing Scrubs with the setup wizard](docs/releasetutorial.gif)
+
+### Step 2: Get a free Gemini API key
+
+Scrubs uses Google's Gemini to answer your questions. An **API key** is a long password that lets Scrubs use Gemini for you. It's free.
+
+1. Go to **[aistudio.google.com/apikey](https://aistudio.google.com/apikey)** and sign in with your Google account.
+2. Click **Create API key**. If it asks you to pick a project, the one it suggests is fine.
+3. Click **Copy** next to your new key. It's a long line of letters and numbers that starts with `AIza`.
+
+Keep your key private, like a password. Don't post it or share it.
+
+### Step 3: Add the key to Scrubs
+
+1. Scrubs opens on a screen called **Set up the chatbot**.
+2. Click in the **Gemini API key** box and paste your key (**Ctrl + V**).
+3. Click **Save and continue**. Scrubs checks the key with Google. If it says the key was rejected, copy it again and make sure nothing was left out.
+
+That's it. Your key is saved securely on this computer, so you won't be asked again. To change or remove it later, click **Settings** in the top right corner.
+
+Don't have a key yet? Click **Skip for now**. You can still upload and check documents; only the chatbot needs the key.
+
+### Using Scrubs
+
+1. **Upload** a PDF, or paste the text of a letter, form or record.
+2. **Check** the highlighted items. Highlighted words are hidden from the chatbot. Click one to change it.
+3. Click **Continue** and **ask** your question, for example "Explain this letter in simple words."
+
+The chatbot only ever sees the hidden version (like `[PERSON_01]` instead of your name). Your real details are put back on your screen, never sent. Your documents stay on your computer and are cleared when you close Scrubs.
+
+### Uninstalling
+
+Open **Settings > Apps > Installed apps**, find **Scrubs**, and click **Uninstall**.
+
 ## How it works
 
 1. Upload a text-based PDF or paste the text.
@@ -14,20 +62,6 @@ We built it at StormHacks 2026 (Armin, Felix, Krish and Nathan) as a tool for cl
 4. You chat. Ask questions about your documents, or ask for a summary or a draft. Gemini only gets the placeholders. Dates are moved by the same number of days, so the gaps between them stay right.
 
 Documents, flags and the placeholder mapping are kept in memory only and are gone when you restart. The one exception is the optional Snowflake audit log, which records mask and unmask decisions as counts with no document text.
-
-## Install the desktop app (Windows)
-
-![Installing Scrubs with the setup wizard](docs/releasetutorial.gif)
-
-1. Download `Scrubs-0.1.0.msi` from the [Releases page](../../releases). It's about 930 MB.
-2. Run it. The installer isn't code-signed, so Windows will show "Windows protected your PC". Click **More info**, then **Run anyway**.
-3. Pick an install folder or keep the default (`C:\Program Files\Scrubs`).
-4. Open Scrubs. It shows "Starting Scrubs" for up to a minute while the detection models load.
-5. The first screen asks for your Gemini API key (get one free at https://aistudio.google.com/apikey). Scrubs checks it with Google and saves it in Windows Credential Manager. You can skip this and use detection and review without the chat.
-
-Detection runs on your computer. The only thing that goes over the internet is the masked text you send to the chat.
-
-To change or remove the API key later, click **Settings** in the top right of the app. To uninstall, use Settings > Apps.
 
 ## Running it locally
 
@@ -62,7 +96,6 @@ It runs on http://localhost:3000. To try the frontend with sample data and no ba
 | `desktop/` | Windows app and MSI build, see [desktop/README.md](desktop/README.md) |
 | `eval/` | Synthetic test notes and `eval/run.py`, which scores default Presidio against our pipeline, see [eval/README.md](eval/README.md) |
 | `data/` | Seed copy of the sensitive terms database, and sample PDFs |
-| `CLAUDE.md` | The full project spec |
 
 ## Sponsor tracks
 
