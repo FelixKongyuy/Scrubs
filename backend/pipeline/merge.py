@@ -166,6 +166,21 @@ def merge(text: str, rule_spans: list[dict], model_spans: list[dict],
     # Two findings can join into a phrase the user put on the never-mask list: drop it too.
     merged = [m for m in merged if not is_never_mask(text[m["start"]:m["end"]], never)]
 
+    # A detector often catches only the first copy of a repeated value ("Felix Kongyuy" twice on an
+    # invoice line). Flag every other exact copy too, so Review shows all of them.
+    extra: list[dict] = []
+    for m in list(merged):
+        value = text[m["start"]:m["end"]]
+        # HIGH only: a repeated name or number is the same thing; a repeated "Hope" may not be.
+        if _tier_rank(m) < 2 or len(value.strip()) < config.MIN_REPEAT_CHARS:
+            continue
+        for occ in re.finditer(r"(?<!\w)" + re.escape(value) + r"(?!\w)", text):
+            s, e = occ.start(), occ.end()
+            if not any(o["start"] < e and s < o["end"] for o in merged + extra):
+                extra.append({**m, "start": s, "end": e, "found_by": list(m["found_by"])})
+    if extra:
+        merged = sorted(merged + extra, key=lambda s: s["start"])
+
     # Give each span an id (the frontend uses it for approve/reject) and its text.
     for i, m in enumerate(merged):
         m["id"] = i

@@ -113,7 +113,8 @@ class StreetAddressRecognizer(EntityRecognizer):
     A custom recognizer because Presidio's PatternRecognizer adds IGNORECASE by default.
     """
     _RE = re.compile(
-        r"\b\d{1,6}(?:-\d{1,6})?\s+(?:[A-Z][a-z]+\.?\s+){1,3}"
+        # street name words: "Marine", or numbered streets like "107A", "152", "4th"
+        r"\b\d{1,6}(?:-\d{1,6})?\s+(?:(?:[A-Z][a-z]+\.?|\d{1,3}[A-Z]?(?:st|nd|rd|th)?)\s+){1,3}"
         r"(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Boulevard|Blvd|Way|Crescent|Cres|Lane|Ln|Place|Pl"
         r"|Court|Ct|Highway|Hwy|Terrace|Trail|Close|Row)\b\.?"
     )
