@@ -22,18 +22,53 @@ _WORD = re.compile(r"[A-Za-z][\w'’.-]*")
 _BULLETS = set("•▪●◦‣∙·*|")
 
 
-def _check_name_guess(text: str, span: dict) -> dict | None:
+# Separators no name contains. spaCy sometimes runs a name into what follows it
+# ("Felix Kongyuy / Good Fridays"), so a guess is split here first.
+_SPLIT = re.compile(r"\s*(?:/|\||&|,|;|\t|\n|\s-\s|\s–\s)\s*")
+
+_PLACES = re.compile(
+    r"\b(british columbia|alberta|saskatchewan|manitoba|ontario|quebec|québec|nova scotia|new brunswick"
+    r"|prince edward island|newfoundland|labrador|yukon|nunavut|northwest territories|canada"
+    r"|united states|usa)\b", re.IGNORECASE)
+
+
+def _check_name_guesses(text: str, span: dict) -> list[dict]:
     """
-    spaCy's PERSON is a guess from capital letters, so on resumes, forms and letters it often lands
-    on organizations, products and headings. Returns the span to keep, a corrected one, or None.
+    spaCy's PERSON is a guess from capital letters, so on resumes, invoices and forms it often lands
+    on organizations, places, products and headings. Returns the spans to keep (possibly corrected).
+      - split at separators: "Felix Kongyuy / Good Fridays" -> the name, plus the rest as an
+        Organization (MED)
+      - a province or country in it ("VANCOUVER BRITISH COLUMBIA"): a place (MED), not a name
       - next to an organization word ("Simon Fraser University", "University of Victoria"):
         widen it and make it an Organization (MED), not a locked name
       - a bullet, a digit or a word no name contains ("Website", "Project"): not a name, drop it
     Only Presidio's guesses are checked. GLiNER reads context, so its names are trusted.
     """
     if span["source"] != "rules" or span["type"] != "PERSON":
-        return span
+        return [span]
     found = text[span["start"]:span["end"]]
+    parts = [(m.start(), m.end()) for m in re.finditer(r"[^/|&,;\t\n]+", found)
+             if found[m.start():m.end()].strip()]
+    if len(parts) > 1 or (parts and _SPLIT.search(found)):
+        out = []
+        for i, (s, e) in enumerate(parts):
+            piece = found[s:e]
+            lead = len(piece) - len(piece.lstrip())
+            trail = len(piece.rstrip())
+            start, end = span["start"] + s + lead, span["start"] + s + trail
+            if end - start < 2 or not re.search(r"[A-Z]", text[start:end]):
+                continue
+            # The first piece keeps the name guess; what follows a separator is usually a company.
+            sub = {**span, "start": start, "end": end, "type": "PERSON" if i == 0 else "ORGNAME"}
+            out += _check_name_guess(text, sub) if i == 0 else [sub]
+        return out
+    return _check_name_guess(text, span)
+
+
+def _check_name_guess(text: str, span: dict) -> list[dict]:
+    found = text[span["start"]:span["end"]]
+    if _PLACES.search(found):
+        return [{**span, "type": "LOCATION"}]
     after = re.match(r"[ \t]+([A-Za-z.]+)", text[span["end"]:span["end"] + 40])
     if after and after.group(1).lower().strip(".") in config.ORG_WORDS:
         end = span["end"] + after.end()
@@ -41,14 +76,14 @@ def _check_name_guess(text: str, span: dict) -> dict | None:
         tail = re.match(r"[ \t]+of[ \t]+((?:[A-Z][\w'’-]*[ \t]?)+)", text[end:end + 60])
         if tail:
             end += len(tail.group(0).rstrip())
-        return {**span, "end": end, "type": "ORGNAME"}
+        return [{**span, "end": end, "type": "ORGNAME"}]
     before = re.search(r"([A-Za-z]+)[ \t]+of[ \t]+(?:the[ \t]+)?$", text[max(0, span["start"] - 40):span["start"]])
     if before and before.group(1).lower() in config.ORG_WORDS:
-        return {**span, "start": span["start"] - len(before.group(0)), "type": "ORGNAME"}
+        return [{**span, "start": span["start"] - len(before.group(0)), "type": "ORGNAME"}]
     words = [w.lower().strip(".") for w in _WORD.findall(found)]
     if any(ch in _BULLETS or ch.isdigit() for ch in found) or any(w in config.NOT_NAME_WORDS for w in words):
-        return None
-    return span
+        return []
+    return [span]
 
 
 def normalize_phrase(value: str) -> str:
@@ -116,7 +151,7 @@ def merge(text: str, rule_spans: list[dict], model_spans: list[dict],
                      if not l.get("ambiguous") or any(_overlaps(l, g) for g in model_spans)]
 
     never = never_mask_set()
-    rule_spans = [c for c in (_check_name_guess(text, s) for s in rule_spans) if c is not None]
+    rule_spans = [c for s in rule_spans for c in _check_name_guesses(text, s)]
     spans = [s for s in rule_spans + model_spans + lexicon_spans
              if not _is_medical_term(text[s["start"]:s["end"]])
              and not is_never_mask(text[s["start"]:s["end"]], never)]
@@ -171,8 +206,9 @@ def merge(text: str, rule_spans: list[dict], model_spans: list[dict],
     extra: list[dict] = []
     for m in list(merged):
         value = text[m["start"]:m["end"]]
-        # HIGH only: a repeated name or number is the same thing; a repeated "Hope" may not be.
-        if _tier_rank(m) < 2 or len(value.strip()) < config.MIN_REPEAT_CHARS:
+        # HIGH items and organization names only: a repeated name, number or company is the same
+        # thing; a repeated "Hope" (town or word) may not be.
+        if (_tier_rank(m) < 2 and m["type"] != "ORGNAME") or len(value.strip()) < config.MIN_REPEAT_CHARS:
             continue
         for occ in re.finditer(r"(?<!\w)" + re.escape(value) + r"(?!\w)", text):
             s, e = occ.start(), occ.end()

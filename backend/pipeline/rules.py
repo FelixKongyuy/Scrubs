@@ -88,6 +88,42 @@ class SINRecognizer(EntityRecognizer):
         return out
 
 
+# ---------- Canadian business number (BN, GST/HST registration) ----------
+class BusinessNumberRecognizer(EntityRecognizer):
+    """
+    The 9 digits after "BN", "GST", "HST", "QST" or "Business Number", optionally with a program
+    account ("RT0001"): "BN: 734532278", "#GST-734532278". A sole proprietor's BN points to a person.
+    """
+    _RE = re.compile(r"\b(?:BN|GST|HST|QST|Business\s+(?:No\.?|Number))[\s:#-]*(\d{9}(?:\s*RT\s*\d{4})?)\b",
+                     re.IGNORECASE)
+
+    def __init__(self):
+        super().__init__(supported_entities=["BN"], name="BusinessNumberRecognizer")
+
+    def load(self): pass
+
+    def analyze(self, text, entities, nlp_artifacts=None):
+        return [RecognizerResult("BN", m.start(1), m.end(1), 1.0) for m in self._RE.finditer(text)]
+
+
+# ---------- Company names with a legal or group suffix ----------
+class OrgNameRecognizer(EntityRecognizer):
+    """
+    Capitalized words ending in Inc, Ltd, Corp, LLC, Group...: "8.O Entertainment Inc",
+    "Dark Blue Group". Case-SENSITIVE, so "a support group" never matches.
+    """
+    _RE = re.compile(r"\b((?:[A-Z0-9][\w.&'’-]*[ \t]+){1,4}(?:Inc|Ltd|Corp|Corporation|LLC|LLP|Limited|Group"
+                     r"|Co))\b\.?")
+
+    def __init__(self):
+        super().__init__(supported_entities=["ORGNAME"], name="OrgNameRecognizer")
+
+    def load(self): pass
+
+    def analyze(self, text, entities, nlp_artifacts=None):
+        return [RecognizerResult("ORGNAME", m.start(1), m.end(1), 0.8) for m in self._RE.finditer(text)]
+
+
 # ---------- MRN (Medical Record Number) ----------
 class MRNRecognizer(EntityRecognizer):
     """Flags the digit portion of MRN annotations, e.g. '9482-110' in 'MRN: 9482-110'."""
@@ -201,7 +237,9 @@ analyzer.registry.add_recognizer(ContextDateRecognizer())
 analyzer.registry.add_recognizer(RunningTextDateRecognizer())
 analyzer.registry.add_recognizer(StreetAddressRecognizer())
 analyzer.registry.add_recognizer(LicenseRecognizer())
-analyzer.registry.add_recognizer(SINRecognizer())     # CREDIT_CARD and IBAN_CODE are Presidio built-ins
+analyzer.registry.add_recognizer(SINRecognizer())
+analyzer.registry.add_recognizer(BusinessNumberRecognizer())
+analyzer.registry.add_recognizer(OrgNameRecognizer())     # CREDIT_CARD and IBAN_CODE are Presidio built-ins
 
 # Canadian postal code, e.g. "V0R 2Z0". (First letter can't be D, F, I, O, Q, U, W, Z.)
 analyzer.registry.add_recognizer(PatternRecognizer(
@@ -279,14 +317,28 @@ def find(text: str) -> list[dict]:
         found = text[r.start:r.end]
         if r.entity_type == "DATE_TIME" and (not _is_real_date(found) or _is_score(text, r.start, r.end)):
             continue
+        start, end = r.start, r.end
+        if r.entity_type == "PHONE_NUMBER":
+            # Presidio's phone pattern can run into the next word: "734532278 8" from
+            # "734532278 8.o.entertainment1@gmail.com". Cut it back to the last whole token.
+            if end < len(text) and (text[end].isalnum() or (text[end] in ".@_" and text[end + 1:end + 2].isalnum())):
+                cut = max(text.rfind(" ", start, end), text.rfind("\t", start, end))
+                if cut <= start:
+                    continue
+                end = cut
+            if sum(ch.isdigit() for ch in text[start:end]) < 7:
+                continue
         spans.append({
-            "start": r.start,
-            "end": r.end,
+            "start": start,
+            "end": end,
             "type": config.PRESIDIO_RENAME.get(r.entity_type, r.entity_type),
             "score": round(r.score, 2),
             "source": "rules",
         })
-    return spans
+    # A number already identified as a SIN or business number is not also a phone number.
+    ids = [s for s in spans if s["type"] in ("SIN", "BN")]
+    return [s for s in spans if not (s["type"] == "PHONE" and any(i["start"] < s["end"] and s["start"] < i["end"]
+                                                                   for i in ids))]
 
 
 # ---------- Last-resort check used right before anything is sent to Gemini ----------

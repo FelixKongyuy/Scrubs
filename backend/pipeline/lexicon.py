@@ -46,6 +46,12 @@ def load(force: bool = False) -> str:
         rows, source_used = _load_from_csv(), "csv"
 
     _entries = {r["phrase"]: r for r in rows}
+    # Forms and invoices often write places in capitals ("VANCOUVER"). Match those too, except for
+    # ambiguous entries, which already need GLiNER to agree.
+    for r in rows:
+        upper = r["phrase"].upper()
+        if not r["ambiguous"] and upper != r["phrase"] and len(upper) > 3:
+            _entries.setdefault(upper, r)
     # One big regex, LONGEST phrases first, so "Tofino General Hospital" wins over "Tofino".
     # Case-sensitive on purpose: "Hope" (town) vs "hope" (word).
     # (?<!\w) / (?!\w) = whole words only, so "Trail" won't match inside "Trailer".

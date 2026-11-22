@@ -45,7 +45,7 @@ class Pseudonyms:
 # wherever it appears. Over-masking costs a little readability; a miss is a leak.
 
 NAME_TYPES = {"PERSON", "PROVIDER"}
-NUMBER_TYPES = {"PHONE", "PHN", "MRN", "LICENSE", "SIN", "CARD", "IBAN"}
+NUMBER_TYPES = {"PHONE", "PHN", "MRN", "LICENSE", "SIN", "CARD", "IBAN", "BN"}
 # Words in a name that say nothing on their own: particles, titles, and relation words that
 # spaCy sometimes includes in a name ("Daughter Claire").
 _NAME_STOPWORDS = {"van", "von", "der", "den", "del", "des", "la", "le", "los", "the", "and",

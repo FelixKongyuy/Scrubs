@@ -24,7 +24,7 @@ SPACY_MODEL = os.getenv("SPACY_MODEL", "en_core_web_sm")
 # (nationality/religion/politics) because they're noisy on clinical text; GLiNER handles places.
 PRESIDIO_ENTITIES = ["PERSON", "PHONE_NUMBER", "EMAIL_ADDRESS", "DATE_TIME",
                      "PHN", "POSTAL", "FACILITY", "MRN", "ADDRESS", "LICENSE",
-                     "SIN", "CREDIT_CARD", "IBAN_CODE"]
+                     "SIN", "CREDIT_CARD", "IBAN_CODE", "BN", "ORGNAME"]
 
 # Rename Presidio's type names to our shorter tag names.
 PRESIDIO_RENAME = {"PHONE_NUMBER": "PHONE", "EMAIL_ADDRESS": "EMAIL", "DATE_TIME": "DATE",
@@ -76,7 +76,7 @@ GLINER_CHUNK_CHARS = 1200
 # Types found by a pattern/checksum (not a guess). When findings overlap, these types win.
 # Presidio's PERSON is NOT here: it's a spaCy model guess, so GLiNER (the specialist) wins on names.
 STRUCTURED_TYPES = {"PHN", "MRN", "LICENSE", "PHONE", "EMAIL", "POSTAL", "DATE", "FACILITY", "ADDRESS",
-                    "SIN", "CARD", "IBAN"}
+                    "SIN", "CARD", "IBAN", "BN"}
 
 # Words that look like names but are medical terms. Never redact these.
 NEVER_REDACT = {
@@ -165,6 +165,7 @@ TYPES = {
     "SIN":        ("SIN", "high", "SIN"),
     "CARD":       ("Card number", "high", "CARD"),
     "IBAN":       ("Bank account", "high", "ACCOUNT"),
+    "BN":         ("Business number", "med", "BN"),
     "DATE":       ("Date", "med", "DATE"),
     "AGE":        ("Age", "med", "AGE"),
     "LOCATION":   ("Location description", "med", "LOC"),

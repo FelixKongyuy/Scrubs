@@ -28,6 +28,7 @@ REASONS = {
     "SIN": "Social Insurance Number, check digit valid",
     "CARD": "Payment card number, check digit valid",
     "IBAN": "Bank account number (IBAN)",
+    "BN": "Business or GST/HST number",
     "DATE": "Exact date",
     "AGE": "Age over 89",
     "LOCATION": "Names a town or place",

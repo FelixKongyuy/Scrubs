@@ -24,6 +24,7 @@ FLAG_KEYS = {"flag_code", "start_idx", "end_idx", "text", "label", "tier", "reas
              "pseudonym", "source"}
 CHAT_KEYS = {"answer_with_pseudonyms", "outbound_text", "identifier_count"}
 LABELS = {"Person", "PHN", "MRN", "License", "Address", "Phone", "Email", "SIN", "Card number", "Bank account", "Organization",
+          "Business number",
           "Date", "Age", "Location description",
           "Unique role", "Family detail", "Employer", "Person description", "Drug", "Dose", "Diagnosis", "Lab value"}
 
@@ -281,11 +282,18 @@ def test_dates_are_shifted_not_tagged():
 
 
 def test_shifted_dates_keep_intervals():
-    c = client()
-    doc = new_doc(c, text="Admitted 2026-09-21. Discharged 2026-09-28. Seen again on 2026-10-12.")
-    days = [date.fromisoformat(flag(doc, d)["pseudonym"]) for d in ("2026-09-21", "2026-09-28", "2026-10-12")]
-    assert (days[1] - days[0]).days == 7 and (days[2] - days[1]).days == 14
-    assert days[0] == date(2026, 9, 21) + timedelta(app_module.DATE_OFFSET_DAYS)
+    # Pin the offset: a random 21-day shift would move 2026-10-12 onto 2026-09-21, a date already in
+    # the note, and that clash correctly falls back to a [DATE_NN] tag (tested below).
+    old = app_module.DATE_OFFSET_DAYS
+    app_module.DATE_OFFSET_DAYS = -30
+    try:
+        c = client()
+        doc = new_doc(c, text="Admitted 2026-09-21. Discharged 2026-09-28. Seen again on 2026-10-12.")
+        days = [date.fromisoformat(flag(doc, d)["pseudonym"]) for d in ("2026-09-21", "2026-09-28", "2026-10-12")]
+        assert (days[1] - days[0]).days == 7 and (days[2] - days[1]).days == 14
+        assert days[0] == date(2026, 9, 21) + timedelta(-30)
+    finally:
+        app_module.DATE_OFFSET_DAYS = old
 
 
 def test_unreadable_or_clashing_date_falls_back_to_a_tag():
@@ -823,6 +831,35 @@ def test_organizations_and_products_are_not_names():
     for word in ("Jira", "Confluence", "Java", "Gemini API", "Luxury Car Rental Website"):
         assert all(word not in t for t in found), (word, list(found))
     assert found["Dr. Raj Patel"]["label"] == "Person"                  # real names still caught
+
+
+INVOICE = """Invoice
+Bill to\tShip to
+\t8.O Entertainment Inc Felix Kongyuy / Good Fridays & Felix Kongyuy / Good Fridays &
+\t1705-1310 Richards St
+Dark Blue Group\tDark Blue Group
+\tVANCOUVER BRITISH COLUMBIA
+14653 107A Ave\t14653 107A Ave
+Surrey BC V3R 1V2\tSurrey BC V3R 1V2
+management.djko@gmail.com\t#GST-734532278
+\tBN: 734532278 8.o.entertainment1@gmail.com 7788756822
+"""
+
+
+def test_invoice_names_places_companies_and_numbers():
+    c = client()
+    doc = new_doc(c, text=INVOICE)
+    by_text: dict[str, list] = {}
+    for f in doc["flags"]:
+        by_text.setdefault(f["text"], []).append(f)
+    assert len(by_text["Felix Kongyuy"]) == 2 and all(f["label"] == "Person" for f in by_text["Felix Kongyuy"])
+    assert len(by_text["Good Fridays"]) == 2 and by_text["Good Fridays"][0]["label"] == "Organization"
+    assert by_text["VANCOUVER BRITISH COLUMBIA"][0]["label"] == "Location description"
+    assert len(by_text["14653 107A Ave"]) == 2 and by_text["14653 107A Ave"][0]["label"] == "Address"
+    assert by_text["8.O Entertainment Inc"][0]["label"] == "Organization"
+    assert len(by_text["Dark Blue Group"]) == 2
+    assert all(f["label"] == "Business number" for f in by_text["734532278"]) and len(by_text["734532278"]) == 2
+    assert "8.o.entertainment1@gmail.com" in by_text and by_text["7788756822"][0]["label"] == "Phone"
 
 
 def test_sin_card_and_bank_numbers_are_locked_high():

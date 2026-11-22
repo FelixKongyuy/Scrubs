@@ -45,7 +45,10 @@ export default function HowItWorks() {
             the details that point to you before anything is sent to the chatbot.
           </p>
           <ol className="steps-list">
-            <li>Scrubs finds names, ID numbers (health card, SIN, bank and card numbers), addresses, phone numbers and dates.</li>
+            <li>
+              Scrubs finds names, ID numbers (health card, SIN, bank, card and business numbers), addresses, phone numbers,
+              company names and dates.
+            </li>
             <li>It also looks for clues that could point to you indirectly, like a small town or &ldquo;the retired town pharmacist&rdquo;.</li>
             <li>You check every flagged item and decide what to hide.</li>
             <li>Hidden items are swapped for labels like [PERSON_01]. Only that version goes to the chatbot, and the real words are put back on your screen.</li>
