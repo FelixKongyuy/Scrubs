@@ -15,6 +15,13 @@ Nothing in `backend/` is changed for this. `launcher.py` imports `backend/app.py
 
 ## Build
 
+Two things that break a first build on Windows:
+
+- **Long paths.** PyTorch installs files nested deep enough to pass Windows' 260-character limit when the repo sits in a long folder. Build from a short path, for example `subst S: "<repo folder>"` and run everything from `S:\` (remove it afterwards with `subst S: /d`).
+- **protobuf.** Loading GLiNER's tokenizer needs `protobuf>=7`. pip warns that `snowflake-connector-python` wants `<7`; that only matters if Snowflake auditing is configured, which the desktop app never does. Run `backend\.venv\Scripts\pip install -U "protobuf>=7"` after the install below.
+
+PyInstaller also needs a few GB of free memory: close large apps while it runs.
+
 Once, from the repo root:
 
 ```
