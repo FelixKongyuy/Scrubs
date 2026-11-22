@@ -1260,3 +1260,34 @@ p {
 @media (prefers-reduced-motion: reduce) {
   .thinking__dots::after { animation: none; content: "..."; }
 }
+/* ---------- Chat: attached documents ---------- */
+.attach-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-muted);
+  font-size: var(--text-sm);
+}
+.attach-bar__label {
+  font-weight: 600;
+  margin-right: var(--space-1);
+}
+.attach-chip {
+  gap: var(--space-2);
+  padding: 2px var(--space-2);
+  font-size: var(--text-sm);
+  max-width: 100%;
+}
+.attach-chip__name {
+  overflow-wrap: anywhere;
+}
+.request__docs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  white-space: normal;
+}

@@ -9,7 +9,15 @@ import Icon from "./Icon";
 
 export type ChatMessage =
   // blocked: the leak check held this message back, so nothing was sent to Gemini.
-  | { role: "user"; text: string; sent: string; mapping: Record<string, string>; blocked?: boolean }
+  | {
+      role: "user";
+      text: string;
+      sent: string;
+      mapping: Record<string, string>;
+      blocked?: boolean;
+      // Titles of the documents attached when this was sent. Shown on screen only, never sent.
+      docs: string[];
+    }
   | {
       role: "assistant";
       answer: string;
@@ -210,7 +218,7 @@ export default function ChatStep({
     }
     // Placeholder until the backend answers. Its own tagging (any case, whole words) is the truth.
     const sent = replaceAll(text, Object.entries(mapping).map(([pseudo, real]) => [real, pseudo]));
-    const userMsg: ChatMessage = { role: "user", text, sent, mapping };
+    const userMsg: ChatMessage = { role: "user", text, sent, mapping, docs: active.map((d) => d.title) };
     setMessages((m) => [...m, userMsg]);
     try {
       const res = await chat(ids, text);
@@ -343,6 +351,20 @@ export default function ChatStep({
           </p>
         )}
 
+        <div className="attach-bar" aria-label="Attached documents">
+          <span className="attach-bar__label">Attached</span>
+          {active.length === 0 ? (
+            <span className="muted">No documents. Check one on the left.</span>
+          ) : (
+            active.map((d) => (
+              <span key={d.id} className="file-chip attach-chip" title="Only the masked text is sent, never the file name">
+                <Icon name="file" />
+                <span className="attach-chip__name">{d.title}</span>
+              </span>
+            ))
+          )}
+        </div>
+
         <div className="messages">
           {messages.length === 0 && (
             <div className="chat-empty">
@@ -366,6 +388,16 @@ export default function ChatStep({
                 <div className="request">
                   <span className="request__who">Request</span>
                   {m.text}
+                  {m.docs.length > 0 && (
+                    <span className="request__docs">
+                      {m.docs.map((title, j) => (
+                        <span key={j} className="file-chip attach-chip">
+                          <Icon name="file" />
+                          <span className="attach-chip__name">{title}</span>
+                        </span>
+                      ))}
+                    </span>
+                  )}
                 </div>
                 {split && (
                   <div className="request is-ai-view">
